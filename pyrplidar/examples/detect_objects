@@ -1,0 +1,45 @@
+from pyrplidar import PyRPlidar
+import time
+
+DETECTION_THRESHOLD = 1.0   # meters
+PRINT_INTERVAL = 2.0        # seconds
+
+def detect_objects():
+    lidar = PyRPlidar()
+    lidar.connect(port="/dev/ttyUSB0", baudrate=460800, timeout=3)
+
+    lidar.set_motor_pwm(500)
+    time.sleep(2)
+
+    scan_generator = lidar.force_scan()
+    print("Detecting objects...")
+
+    last_print_time = 0
+
+    try:
+        for scan in scan_generator():
+            angle = scan.angle
+            distance_m = scan.distance / 1000.0
+
+            now = time.time()
+
+            # Only print every 2 seconds
+            if now - last_print_time >= PRINT_INTERVAL:
+                last_print_time = now
+
+                if 0 < distance_m < DETECTION_THRESHOLD:
+                    print(f"🚨 Object at {distance_m:.2f} m (angle {angle:.1f}°)")
+                else:
+                    print("No object detected")
+
+    except KeyboardInterrupt:
+        print("Stopping...")
+
+    lidar.stop()
+    lidar.set_motor_pwm(0)
+    lidar.disconnect()
+
+
+if __name__ == "__main__":
+    detect_objects()
+

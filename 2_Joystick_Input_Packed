@@ -1,3 +1,15 @@
+#include <SPI.h>
+#include <nRF24L01.h>
+#include <RF24.h>
+
+//transceiver
+#define CE 6
+#define CSN 7
+
+RF24 radio(CE, CSN);
+const byte address[6] = "00001"; //byte address that transmitter and receiver will use to communicate
+bool transmit_cmd(); //function used to transmit joystick readings, returns 1 on success and 0 on failure
+
 // Joystick Pins
 const int xPin1   = A5;
 const int yPin1   = A3;
@@ -12,13 +24,17 @@ int xVal1, yVal1, butState1;
 int xVal2, yVal2, butState2;
 
 // Timing Control
-const unsigned long READ_INTERVAL_MS = 250; 
+const unsigned long READ_INTERVAL_MS = 100; 
 unsigned long lastReadTime = 0;
 
 uint32_t packedData;
 
 void setup() {
   Serial.begin(9600);
+  radio.begin(); // Initialize the radio
+  radio.openWritingPipe(address); // Open a writing pipe to the specific address
+  radio.setPALevel(RF24_PA_MIN); // Set the Power Amplifier level (MIN, LOW, HIGH, MAX)
+  radio.stopListening(); // Set the module as a transmitter
 
   pinMode(butPin1, INPUT_PULLUP);
   pinMode(butPin2, INPUT_PULLUP);
@@ -43,7 +59,12 @@ void loop() {
 
     Serial.print(" Packed (BIN): ");
     Serial.println(packedData, BIN);
+
+    bool success = transmit_cmd();
+    if (!success)
+      Serial.println("Transmission Failed");
   }
+
   // handleWireless();
 }
 
@@ -97,4 +118,15 @@ void printJoystickData() {
   Serial.print(" B:");
   Serial.print(butState2);
   Serial.println("]");
+}
+
+bool transmit_cmd() {
+  const uint32_t data = packedData;
+  bool success = radio.write(&data, sizeof(data)); // Send the data
+
+  if (success)
+    return true;
+
+  return false;
+
 }

@@ -1,0 +1,100 @@
+// Joystick Pins
+const int xPin1   = A5;
+const int yPin1   = A3;
+const int butPin1 = 2;
+
+const int xPin2   = A1;
+const int yPin2   = A0;
+const int butPin2 = 4;
+
+// Joystick Values
+int xVal1, yVal1, butState1;
+int xVal2, yVal2, butState2;
+
+// Timing Control
+const unsigned long READ_INTERVAL_MS = 250; 
+unsigned long lastReadTime = 0;
+
+uint32_t packedData;
+
+void setup() {
+  Serial.begin(9600);
+
+  pinMode(butPin1, INPUT_PULLUP);
+  pinMode(butPin2, INPUT_PULLUP);
+}
+
+void loop() {
+  unsigned long now = millis();
+  // Read joysticks periodically (non-blocking)
+  if (now - lastReadTime >= READ_INTERVAL_MS) {
+    lastReadTime = now;
+
+    readJoysticks();
+
+
+    printJoystickData();
+
+    //packedData can be transmitted as is at this point, no joystick press accounted for yet
+    packedData = packJoystickData(xVal1, yVal2);
+
+    Serial.print(" Packed (HEX): 0x");
+    Serial.println(packedData, HEX);
+
+    Serial.print(" Packed (BIN): ");
+    Serial.println(packedData, BIN);
+  }
+  // handleWireless();
+}
+
+//Pack integers into first 20 bits of 32 bit binary string
+uint32_t packJoystickData(int joy1X, int joy2Y) {
+  uint32_t packed = 0;
+
+  packed |= (uint32_t)(joy1X & 0x03FF);          // bits 0–9
+  packed |= (uint32_t)(joy2Y & 0x03FF) << 10;    // bits 10–19
+
+  return packed;
+}
+
+//Code for unpacking Binary not used now but could be used in reciever 
+void unpackJoystickData(uint32_t packed,
+                        int &joy1X,
+                        int &joy2Y)
+{
+  joy1X =  packed        & 0x03FF;          // bits 0–9
+  joy2Y = (packed >> 10) & 0x03FF;          // bits 10–19
+}
+
+
+// Read Inputs
+void readJoysticks() {
+  // Joystick 1
+  xVal1 = analogRead(xPin1);
+  yVal1 = analogRead(yPin1);
+  butState1 = digitalRead(butPin1);
+
+  // Joystick 2
+  xVal2 = analogRead(xPin2);
+  yVal2 = analogRead(yPin2);
+  butState2 = digitalRead(butPin2);
+}
+
+// Output Data
+void printJoystickData() {
+  Serial.print("J1 [X:");
+  Serial.print(xVal1);
+  Serial.print(" Y:");
+  Serial.print(yVal1);
+  Serial.print(" B:");
+  Serial.print(butState1);
+  Serial.print("]  ");
+
+  Serial.print("J2 [X:");
+  Serial.print(xVal2);
+  Serial.print(" Y:");
+  Serial.print(yVal2);
+  Serial.print(" B:");
+  Serial.print(butState2);
+  Serial.println("]");
+}

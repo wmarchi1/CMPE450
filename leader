@@ -12,6 +12,9 @@
 RF24 radio(2, 3);              // CE, CSN
 const byte address[6] = "00001";
 
+RF24 path_radio(26, 28);
+const byte address2[6] = "00100"; //leader-follow address used for transmitting path info
+
 // Servo
 Servo myservo;
 
@@ -24,10 +27,10 @@ int theta = 90;
 int theta_old = 90;
 float velocity = 0;
 
-int mainMotor1 = 11;
-int mainMotor2 = 3;
-int mainMotor1Dir = 5;
-int mainMotor2Dir = 7;
+int mainMotor1 = 6;
+int mainMotor2 = 5;
+int mainMotor1Dir = 24;
+int mainMotor2Dir = 22;
 
 int pwmMotor1 = 0;
 int pwmMotor2 = 0;
@@ -42,15 +45,33 @@ void unpackJoystickData(uint32_t packed, int &joyX, int &joyY) {
   joyX =  packed        & 0x03FF;      // bits 0–9
   joyY = (packed >> 10) & 0x03FF;      // bits 10–19
 }
+void send_path() {
+  const char test[] = "Hello world!";
+  bool success = path_radio.write(&test, sizeof(test)); // Send the data
+
+  if (!success) {
+    Serial.println("Transmission failed");
+  } else {
+    Serial.println("Success");
+  }
+}
 
 void setup() {
   Serial.begin(9600);
   SPI1.begin();
 
+  //controller receiver
   radio.begin(&SPI1);
   radio.openReadingPipe(1, address);
   radio.setPALevel(RF24_PA_MIN);
-  radio.startListening();
+  radio.startListening(); 
+
+  //path_gen transmitter
+  SPI.begin();
+  path_radio.begin();
+  path_radio.openWritingPipe(address2);
+  path_radio.setPALevel(RF24_PA_MIN);
+  path_radio.stopListening();
 
   myservo.attach(9);
 
@@ -67,6 +88,9 @@ void loop() {
     uint32_t data;
     radio.read(&data, sizeof(data));
     unpackJoystickData(data, xVal, yVal);
+
+    //path_gen
+   // send_path();
   } else {
     velocity = 0;   // failsafe
     return;
@@ -90,10 +114,10 @@ void loop() {
   //  THROTTLE (Y) 
   if (yVal < 488)
     //velocity = map(yVal, 0, 488, -200, 0) / 100.0f;
-    velocity = ( (float)(yVal - 0) ) * (0.0 - (-2.0)) / (488.0 - 0.0) + (-2
+    velocity = ( (float)(yVal - 0) ) * (0.0 - (-2.0)) / (488.0 - 0.0) + (-2.0);
   else if (yVal > 535)
     //velocity = map(yVal, 535, 1023, 0, 200) / 100.0f;
-    velocity = ( (float)(yVal - 535) ) * (2.0 - 0.0) / (1023.0 - 535.0) + 
+    velocity = ( (float)(yVal - 535) ) * (2.0 - 0.0) / (1023.0 - 535.0) + 0.0 *1.0;
   else
     velocity = 0;
 
@@ -113,20 +137,38 @@ void loop() {
   }
 
   // ================= MOTOR DIRECTION =================
-  dir1 = r_RPM_left  >= 0;
-  dir2 = r_RPM_right >= 0;
+  if (r_RPM_left < 0) {
+    dir1 = false;
+    //digitalWrite(mainMotor1Dir, LOW);
+    r_RPM_left = abs(r_RPM_left);
 
-  r_RPM_left  = abs(r_RPM_left);
-  r_RPM_right = abs(r_RPM_right);
+  }
+  else {
+    dir1 = true;
+    //digitalWrite(mainMotor1Dir, HIGH);
+  }
+  if (r_RPM_right < 0) {
+    dir2 = true;
+    //digitalWrite(mainMotor2Dir, LOW);
+    r_RPM_right = abs(r_RPM_right);
+  }
+  else {
+    dir2 = false;
+    //digitalWrite(mainMotor2Dir, HIGH);
+  }
+
 
   // ================= PWM =================
-  pwmMotor1 = constrain((int)((r_RPM_left  / 2.6f) * 216.0f), 0, 216);
-  pwmMotor2 = constrain((int)((r_RPM_right / 2.6f) * 216.0f), 0, 216);
+  pwmMotor1 = (int)( (r_RPM_left  / 2.6f) * 130.0f );
+  pwmMotor2 = (int)( (r_RPM_right / 2.6f) * 130.0f );
+  pwmMotor1 = constrain(pwmMotor1, 0, 130);
+  pwmMotor2 = constrain(pwmMotor2, 0, 130);
 
   analogWrite(mainMotor1, pwmMotor1);
   analogWrite(mainMotor2, pwmMotor2);
   digitalWrite(mainMotor1Dir, dir1);
   digitalWrite(mainMotor2Dir, dir2);
+  //buttonState = digitalRead(buttonPin);
 
   // ================= DEBUG =================
   Serial.print("X:");

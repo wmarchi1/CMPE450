@@ -1,0 +1,144 @@
+/*
+ * Giga R1 NRF24L01 Receiver
+ * RF joystick → servo + motors
+ */
+
+#include <SPI.h>
+#include <nRF24L01.h>
+#include <RF24.h>
+#include <Servo.h>
+
+// RF
+RF24 radio(2, 3);              // CE, CSN
+const byte address[6] = "00001";
+
+// Servo
+Servo myservo;
+
+//  Joystick (RF) 
+int xVal = 512;   // steering
+int yVal = 512;   // throttle
+
+// Control Variables 
+int theta = 90;
+int theta_old = 90;
+float velocity = 0;
+
+int mainMotor1 = 11;
+int mainMotor2 = 3;
+int mainMotor1Dir = 5;
+int mainMotor2Dir = 7;
+
+int pwmMotor1 = 0;
+int pwmMotor2 = 0;
+float r_RPM_left = 0;
+float r_RPM_right = 0;
+
+bool dir1 = false;
+bool dir2 = false;
+
+// Unpack 
+void unpackJoystickData(uint32_t packed, int &joyX, int &joyY) {
+  joyX =  packed        & 0x03FF;      // bits 0–9
+  joyY = (packed >> 10) & 0x03FF;      // bits 10–19
+}
+
+void setup() {
+  Serial.begin(9600);
+  SPI1.begin();
+
+  radio.begin(&SPI1);
+  radio.openReadingPipe(1, address);
+  radio.setPALevel(RF24_PA_MIN);
+  radio.startListening();
+
+  myservo.attach(9);
+
+  pinMode(mainMotor1, OUTPUT);
+  pinMode(mainMotor2, OUTPUT);
+  pinMode(mainMotor1Dir, OUTPUT);
+  pinMode(mainMotor2Dir, OUTPUT);
+}
+
+void loop() {
+
+  //  RF RECEIVE 
+  if (radio.available()) {
+    uint32_t data;
+    radio.read(&data, sizeof(data));
+    unpackJoystickData(data, xVal, yVal);
+  } else {
+    velocity = 0;   // failsafe
+    return;
+  }
+
+  // STEERING (X) 
+  if (xVal < 488)
+    theta = map(xVal, 0, 488, 22, 90);
+  else if (xVal > 535)
+    theta = map(xVal, 535, 1023, 90, 158);
+  else
+    theta = 90;
+
+  // Steering slew-rate limit
+  if (theta - theta_old >= 2)  theta = theta_old + 2;
+  if (theta - theta_old <= -2) theta = theta_old - 2;
+
+  myservo.write(theta);
+  theta_old = theta;
+
+  //  THROTTLE (Y) 
+  if (yVal < 488)
+    //velocity = map(yVal, 0, 488, -200, 0) / 100.0f;
+    velocity = ( (float)(yVal - 0) ) * (0.0 - (-2.0)) / (488.0 - 0.0) + (-2
+  else if (yVal > 535)
+    //velocity = map(yVal, 535, 1023, 0, 200) / 100.0f;
+    velocity = ( (float)(yVal - 535) ) * (2.0 - 0.0) / (1023.0 - 535.0) + 
+  else
+    velocity = 0;
+
+  //  DIFFERENTIAL DRIVE 
+  const float wheelBaseFactor = 1.515f;
+  const float offsetFactor    = 0.1875f;
+
+  float theta_rad = theta * PI / 180.0f;
+
+  if (theta == 90) {
+    r_RPM_left  = velocity;
+    r_RPM_right = velocity;
+  } else {
+    float turnFactor = tan(theta_rad);
+    r_RPM_left  = velocity * (1.0f + offsetFactor / (wheelBaseFactor * turnFactor));
+    r_RPM_right = velocity * (1.0f - offsetFactor / (wheelBaseFactor * turnFactor));
+  }
+
+  // ================= MOTOR DIRECTION =================
+  dir1 = r_RPM_left  >= 0;
+  dir2 = r_RPM_right >= 0;
+
+  r_RPM_left  = abs(r_RPM_left);
+  r_RPM_right = abs(r_RPM_right);
+
+  // ================= PWM =================
+  pwmMotor1 = constrain((int)((r_RPM_left  / 2.6f) * 216.0f), 0, 216);
+  pwmMotor2 = constrain((int)((r_RPM_right / 2.6f) * 216.0f), 0, 216);
+
+  analogWrite(mainMotor1, pwmMotor1);
+  analogWrite(mainMotor2, pwmMotor2);
+  digitalWrite(mainMotor1Dir, dir1);
+  digitalWrite(mainMotor2Dir, dir2);
+
+  // ================= DEBUG =================
+  Serial.print("X:");
+  Serial.print(xVal);
+  Serial.print(" Y:");
+  Serial.print(yVal);
+  Serial.print(" Theta:");
+  Serial.print(theta);
+  Serial.print(" Vel:");
+  Serial.print(velocity);
+  Serial.print(" PWM1:");
+  Serial.print(pwmMotor1);
+  Serial.print(" PWM2:");
+  Serial.println(pwmMotor2);
+}

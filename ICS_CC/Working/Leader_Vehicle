@@ -27,10 +27,12 @@ int theta = 90;
 int theta_old = 90;
 float velocity = 0;
 
-int mainMotor1 = 6;
-int mainMotor2 = 5;
-int mainMotor1Dir = 24;
-int mainMotor2Dir = 22;
+int mainMotor1 = 48;
+int mainMotor2 = 49;
+int mainMotor1Dir = 36;
+int mainMotor2Dir = 37;
+int mainMotor1Stop = 33;
+int mainMotor2Stop = 32
 
 int pwmMotor1 = 0;
 int pwmMotor2 = 0;
@@ -46,7 +48,7 @@ void unpackJoystickData(uint32_t packed, int &joyX, int &joyY) {
   joyY = (packed >> 10) & 0x03FF;      // bits 10–19
 }
 void send_path() {
-  const char test[32] = "Hello world!";
+  const char test[] = "Hello world!";
   bool success = path_radio.write(&test, sizeof(test)); // Send the data
 
   if (!success) {
@@ -60,7 +62,7 @@ void setup() {
   Serial.begin(9600);
   SPI1.begin();
 
-  //controller receiver
+  //joystick input receiver
   radio.begin(&SPI1);
   radio.openReadingPipe(1, address);
   radio.setPALevel(RF24_PA_MIN);
@@ -73,12 +75,14 @@ void setup() {
   path_radio.setPALevel(RF24_PA_MIN);
   path_radio.stopListening();
 
-  myservo.attach(9);
+  myservo.attach(25);
 
   pinMode(mainMotor1, OUTPUT);
   pinMode(mainMotor2, OUTPUT);
   pinMode(mainMotor1Dir, OUTPUT);
   pinMode(mainMotor2Dir, OUTPUT);
+
+  pinMode(LED_BUILTIN, OUTPUT);
 }
 
 void loop() {
@@ -88,11 +92,16 @@ void loop() {
     uint32_t data;
     radio.read(&data, sizeof(data));
     unpackJoystickData(data, xVal, yVal);
-
+    digitalWrite(LED_BUILTIN, HIGH);
     //path_gen
    // send_path();
   } else {
+    digitalWrite(LED_BUILTIN, LOW);
     velocity = 0;   // failsafe
+    //analogWrite(mainMotor1, 0);
+    //analogWrite(mainMotor2, 0);
+    //theta = 90;
+    //myservo.write(theta);
     return;
   }
 
@@ -105,8 +114,8 @@ void loop() {
     theta = 90;
 
   // Steering slew-rate limit
-  if (theta - theta_old >= 4)  theta = theta_old + 4;
-  if (theta - theta_old <= -4) theta = theta_old - 4;
+  if (theta - theta_old >= 5)  theta = theta_old + 5;
+  if (theta - theta_old <= -5) theta = theta_old - 5;
 
   myservo.write(theta);
   theta_old = theta;

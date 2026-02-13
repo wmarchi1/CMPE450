@@ -1,8 +1,27 @@
+/*
+Creators: UMBC ICS CC 2025-2026
+Devices Used: Arduino Uno R4 Wifi, NRF24L01+ (Transceiver) and Joystick Module
+
+Function: Providing inputs for ICS Lead Vehicle. Imputs from Joystick are sent over
+2.4Ghz signal to Lead.
+*/
+
+/*
+//Code for unpacking Binary not used now but could be used in reciever
+void unpackJoystickData(uint32_t packed,
+                        int &joy1X,
+                        int &joy2Y)
+{
+  joy1X =  packed        & 0x03FF;          // bits 0–9
+  joy2Y = (packed >> 10) & 0x03FF;          // bits 10–19
+}
+*/
+
 #include <SPI.h>
 #include <nRF24L01.h>
 #include <RF24.h>
 
-//transceiver
+// Pins for Transciver
 #define CE 6
 #define CSN 7
 
@@ -10,23 +29,19 @@ RF24 radio(CE, CSN);
 const byte address[6] = "00001"; //byte address that transmitter and receiver will use to communicate
 bool transmit_cmd(); //function used to transmit joystick readings, returns 1 on success and 0 on failure
 
-// Joystick Pins
+// First Joystick Pins
 const int xPin1   = A5;
 const int yPin1   = A3;
 const int butPin1 = 2;
 
-const int xPin2   = A1;
-const int yPin2   = A0;
-const int butPin2 = 4;
-
-// Joystick Values
+// Variables to hold Joystick Values
 int xVal1, yVal1, butState1;
-int xVal2, yVal2, butState2;
 
 // Timing Control
 const unsigned long READ_INTERVAL_MS = 100; 
 unsigned long lastReadTime = 0;
 
+//Variable to hold data to be transmitted
 uint32_t packedData;
 
 void setup() {
@@ -37,32 +52,32 @@ void setup() {
   radio.stopListening(); // Set the module as a transmitter
 
   pinMode(butPin1, INPUT_PULLUP);
-  pinMode(butPin2, INPUT_PULLUP);
 }
 
 void loop() {
   unsigned long now = millis();
+
   // Read joysticks periodically (non-blocking)
   if (now - lastReadTime >= READ_INTERVAL_MS) {
     lastReadTime = now;
 
     readJoysticks();
 
-
     printJoystickData();
 
     //packedData can be transmitted as is at this point, no joystick press accounted for yet
-    packedData = packJoystickData(xVal1, yVal2);
+    packedData = packJoystickData(xVal1, yVal1);
 
-    Serial.print(" Packed (HEX): 0x");
-    Serial.println(packedData, HEX);
-
-    Serial.print(" Packed (BIN): ");
-    Serial.println(packedData, BIN);
-
-    bool success = transmit_cmd();
-    if (!success)
+    bool transmission_success = transmit_cmd();
+    if (!transmission_success)
       Serial.println("Transmission Failed");
+    else{
+      Serial.print(" Packed (HEX): 0x");
+      Serial.println(packedData, HEX);
+
+      Serial.print(" Packed (BIN): ");
+      Serial.println(packedData, BIN);
+    }
   }
 
   // handleWireless();
@@ -78,27 +93,12 @@ uint32_t packJoystickData(int joy1X, int joy2Y) {
   return packed;
 }
 
-//Code for unpacking Binary not used now but could be used in reciever 
-void unpackJoystickData(uint32_t packed,
-                        int &joy1X,
-                        int &joy2Y)
-{
-  joy1X =  packed        & 0x03FF;          // bits 0–9
-  joy2Y = (packed >> 10) & 0x03FF;          // bits 10–19
-}
-
-
 // Read Inputs
 void readJoysticks() {
   // Joystick 1
   xVal1 = analogRead(xPin1);
   yVal1 = analogRead(yPin1);
   butState1 = digitalRead(butPin1);
-
-  // Joystick 2
-  xVal2 = analogRead(xPin2);
-  yVal2 = analogRead(yPin2);
-  butState2 = digitalRead(butPin2);
 }
 
 // Output Data
@@ -110,14 +110,6 @@ void printJoystickData() {
   Serial.print(" B:");
   Serial.print(butState1);
   Serial.print("]  ");
-
-  Serial.print("J2 [X:");
-  Serial.print(xVal2);
-  Serial.print(" Y:");
-  Serial.print(yVal2);
-  Serial.print(" B:");
-  Serial.print(butState2);
-  Serial.println("]");
 }
 
 bool transmit_cmd() {

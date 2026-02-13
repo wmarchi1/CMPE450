@@ -12,8 +12,8 @@
 RF24 radio(2, 3);              // CE, CSN
 const byte address[6] = "00001";
 
-RF24 path_radio(26, 28);
-const byte address2[6] = "00100"; //leader-follow address used for transmitting path info
+// RF24 path_radio(26, 28);
+// const byte address2[6] = "00100"; //leader-follow address used for transmitting path info
 
 // Servo
 Servo myservo;
@@ -32,7 +32,7 @@ int mainMotor2 = 49;
 int mainMotor1Dir = 36;
 int mainMotor2Dir = 37;
 int mainMotor1Stop = 33;
-int mainMotor2Stop = 32
+int mainMotor2Stop = 32;
 
 int pwmMotor1 = 0;
 int pwmMotor2 = 0;
@@ -47,16 +47,16 @@ void unpackJoystickData(uint32_t packed, int &joyX, int &joyY) {
   joyX =  packed        & 0x03FF;      // bits 0–9
   joyY = (packed >> 10) & 0x03FF;      // bits 10–19
 }
-void send_path() {
-  const char test[] = "Hello world!";
-  bool success = path_radio.write(&test, sizeof(test)); // Send the data
+// void send_path() {
+//   const char test[] = "Hello world!";
+//   // bool success = path_radio.write(&test, sizeof(test)); // Send the data
 
-  if (!success) {
-    Serial.println("Transmission failed");
-  } else {
-    Serial.println("Success");
-  }
-}
+//   if (!success) {
+//     Serial.println("Transmission failed");
+//   } else {
+//     Serial.println("Success");
+//   }
+// }
 
 void setup() {
   Serial.begin(9600);
@@ -66,21 +66,23 @@ void setup() {
   radio.begin(&SPI1);
   radio.openReadingPipe(1, address);
   radio.setPALevel(RF24_PA_MIN);
-  radio.startListening(); 
+  radio.startListening();
 
   //path_gen transmitter
-  SPI.begin();
-  path_radio.begin();
-  path_radio.openWritingPipe(address2);
-  path_radio.setPALevel(RF24_PA_MIN);
-  path_radio.stopListening();
+  // SPI.begin();
+  // path_radio.begin();
+  // path_radio.openWritingPipe(address2);
+  // path_radio.setPALevel(RF24_PA_MIN);
+  // path_radio.stopListening();
 
-  myservo.attach(25);
+  myservo.attach(9);
 
   pinMode(mainMotor1, OUTPUT);
   pinMode(mainMotor2, OUTPUT);
   pinMode(mainMotor1Dir, OUTPUT);
   pinMode(mainMotor2Dir, OUTPUT);
+  pinMode(mainMotor1Stop, OUTPUT);
+  pinMode(mainMotor2Stop, OUTPUT);
 
   pinMode(LED_BUILTIN, OUTPUT);
 }

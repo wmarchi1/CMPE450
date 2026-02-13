@@ -15,6 +15,16 @@ void unpackJoystickData(uint32_t packed,
   joy1X =  packed        & 0x03FF;          // bits 0–9
   joy2Y = (packed >> 10) & 0x03FF;          // bits 10–19
 }
+//Pack integers into first 20 bits of 32 bit binary string
+uint32_t packJoystickData(int joy1X, int joy2Y, int butState1) {
+  uint32_t packed = 0;
+
+  packed |= (uint32_t)(joy1X & 0x03FF);          // bits 0–9
+  packed |= (uint32_t)(joy2Y & 0x03FF) << 10;    // bits 10–19
+  packed |= (uint32_t)(butState1 & 0x01) << 20;
+
+  return packed;
+}
 */
 
 #include <SPI.h>

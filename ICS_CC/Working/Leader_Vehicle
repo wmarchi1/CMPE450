@@ -46,6 +46,7 @@ bool dir2 = false;
 void unpackJoystickData(uint32_t packed, int &joyX, int &joyY) {
   joyX =  packed        & 0x03FF;      // bits 0–9
   joyY = (packed >> 10) & 0x03FF;      // bits 10–19
+  
 }
 // void send_path() {
 //   const char test[] = "Hello world!";
@@ -81,8 +82,8 @@ void setup() {
   pinMode(mainMotor2, OUTPUT);
   pinMode(mainMotor1Dir, OUTPUT);
   pinMode(mainMotor2Dir, OUTPUT);
-  pinMode(mainMotor1Stop, OUTPUT);
-  pinMode(mainMotor2Stop, OUTPUT);
+  // pinMode(mainMotor1Stop, OUTPUT);
+  // pinMode(mainMotor2Stop, OUTPUT);
 
   pinMode(LED_BUILTIN, OUTPUT);
 }

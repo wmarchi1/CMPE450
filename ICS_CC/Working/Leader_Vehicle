@@ -12,8 +12,8 @@
 RF24 radio(2, 3);              // CE, CSN
 const byte address[6] = "00001";
 
-// RF24 path_radio(26, 28);
-// const byte address2[6] = "00100"; //leader-follow address used for transmitting path info
+RF24 path_radio(27, 29);
+const byte address2[6] = "00100"; //leader-follow address used for transmitting path info
 
 // Servo
 Servo myservo;
@@ -48,19 +48,20 @@ void unpackJoystickData(uint32_t packed, int &joyX, int &joyY) {
   joyY = (packed >> 10) & 0x03FF;      // bits 10–19
   
 }
-// void send_path() {
-//   const char test[] = "Hello world!";
-//   // bool success = path_radio.write(&test, sizeof(test)); // Send the data
+void send_path() {
+  const char test[] = "Hello world!";
+  bool success = path_radio.write(test, sizeof(test)); // Send the data
 
-//   if (!success) {
-//     Serial.println("Transmission failed");
-//   } else {
-//     Serial.println("Success");
-//   }
-// }
+  if (!success) {
+    Serial.println("Path Transmission failed");
+  } else {
+    Serial.println("Success");
+  }
+}
 
 void setup() {
   Serial.begin(9600);
+  while (!Serial) {}
   SPI1.begin();
 
   //joystick input receiver
@@ -70,11 +71,11 @@ void setup() {
   radio.startListening();
 
   //path_gen transmitter
-  // SPI.begin();
-  // path_radio.begin();
-  // path_radio.openWritingPipe(address2);
-  // path_radio.setPALevel(RF24_PA_MIN);
-  // path_radio.stopListening();
+  SPI.begin();
+  path_radio.begin(&SPI);
+  path_radio.openWritingPipe(address2);
+  path_radio.setPALevel(RF24_PA_MIN);
+  path_radio.stopListening();
 
   myservo.attach(9);
 
@@ -95,11 +96,11 @@ void loop() {
     uint32_t data;
     radio.read(&data, sizeof(data));
     unpackJoystickData(data, xVal, yVal);
-    digitalWrite(LED_BUILTIN, HIGH);
+    // digitalWrite(LED_BUILTIN, HIGH);
     //path_gen
-   // send_path();
+    send_path();
   } else {
-    digitalWrite(LED_BUILTIN, LOW);
+    // digitalWrite(LED_BUILTIN, LOW);
     velocity = 0;   // failsafe
     //analogWrite(mainMotor1, 0);
     //analogWrite(mainMotor2, 0);

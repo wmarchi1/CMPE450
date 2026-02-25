@@ -59,46 +59,15 @@ void send_path() {
   }
 }
 
-void setup() {
-  Serial.begin(9600);
-  while (!Serial) {}
-  SPI1.begin();
-
-  //joystick input receiver
-  radio.begin(&SPI1);
-  radio.openReadingPipe(1, address);
-  radio.setPALevel(RF24_PA_MIN);
-  radio.startListening();
-
-  //path_gen transmitter
-  SPI.begin();
-  path_radio.begin(&SPI);
-  path_radio.openWritingPipe(address2);
-  path_radio.setPALevel(RF24_PA_MIN);
-  path_radio.stopListening();
-
-  myservo.attach(9);
-
-  pinMode(mainMotor1, OUTPUT);
-  pinMode(mainMotor2, OUTPUT);
-  pinMode(mainMotor1Dir, OUTPUT);
-  pinMode(mainMotor2Dir, OUTPUT);
-  // pinMode(mainMotor1Stop, OUTPUT);
-  // pinMode(mainMotor2Stop, OUTPUT);
-
-  pinMode(LED_BUILTIN, OUTPUT);
-}
-
-void loop() {
-
-  //  RF RECEIVE 
+bool joy_stick_controls(){
   if (radio.available()) {
     uint32_t data;
     radio.read(&data, sizeof(data));
     unpackJoystickData(data, xVal, yVal);
     // digitalWrite(LED_BUILTIN, HIGH);
     //path_gen
-    send_path();
+    // send_path();
+    return true;
   } else {
     // digitalWrite(LED_BUILTIN, LOW);
     velocity = 0;   // failsafe
@@ -106,9 +75,11 @@ void loop() {
     //analogWrite(mainMotor2, 0);
     //theta = 90;
     //myservo.write(theta);
-    return;
+    return false;
   }
+}
 
+void set_control_params(){
   // STEERING (X) 
   if (xVal < 488)
     theta = map(xVal, 0, 488, 158, 90);
@@ -148,8 +119,9 @@ void loop() {
     r_RPM_left  = velocity * (1.0f + offsetFactor / (wheelBaseFactor * turnFactor));
     r_RPM_right = velocity * (1.0f - offsetFactor / (wheelBaseFactor * turnFactor));
   }
+}
 
-  // ================= MOTOR DIRECTION =================
+void drive(){
   if (r_RPM_left < 0) {
     dir1 = false;
     //digitalWrite(mainMotor1Dir, LOW);
@@ -181,9 +153,9 @@ void loop() {
   analogWrite(mainMotor2, pwmMotor2);
   digitalWrite(mainMotor1Dir, dir1);
   digitalWrite(mainMotor2Dir, dir2);
-  //buttonState = digitalRead(buttonPin);
+}
 
-  // ================= DEBUG =================
+void debug() {
   Serial.print("X:");
   Serial.print(xVal);
   Serial.print(" Y:");
@@ -196,4 +168,42 @@ void loop() {
   Serial.print(pwmMotor1);
   Serial.print(" PWM2:");
   Serial.println(pwmMotor2);
+}
+
+void setup() {
+  Serial.begin(9600);
+  // while (!Serial) {}
+  SPI1.begin();
+
+  //joystick input receiver
+  radio.begin(&SPI1);
+  radio.openReadingPipe(1, address);
+  radio.setPALevel(RF24_PA_MIN);
+  radio.startListening();
+
+  //path_gen transmitter
+  SPI.begin();
+  path_radio.begin(&SPI);
+  path_radio.openWritingPipe(address2);
+  path_radio.setPALevel(RF24_PA_MIN);
+  path_radio.stopListening();
+
+  myservo.attach(9);
+
+  pinMode(mainMotor1, OUTPUT);
+  pinMode(mainMotor2, OUTPUT);
+  pinMode(mainMotor1Dir, OUTPUT);
+  pinMode(mainMotor2Dir, OUTPUT);
+  // pinMode(mainMotor1Stop, OUTPUT);
+  // pinMode(mainMotor2Stop, OUTPUT);
+
+  pinMode(LED_BUILTIN, OUTPUT);
+}
+
+void loop() {
+  if (joy_stick_controls()) {
+    set_control_params();
+    drive();
+    debug();
+  }
 }

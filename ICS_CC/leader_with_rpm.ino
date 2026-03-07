@@ -26,6 +26,7 @@ int yVal = 512;   // throttle
 int theta = 90;
 int theta_old = 90;
 float velocity = 0;
+float avgRpm = 0;
 
 int mainMotor1 = 48;
 int mainMotor2 = 49;
@@ -62,8 +63,8 @@ void unpackJoystickData(uint32_t packed, int &joyX, int &joyY) {
   
 }
 void send_path() {
-  const char test[] = "Hello world!";
-  bool success = path_radio.write(test, sizeof(test)); // Send the data
+  //const char test[] = "Hello world!";
+  bool success = path_radio.write(&avgRpm, sizeof(avgRpm)); // Send the data
 
   if (!success) {
     Serial.println("Path Transmission failed");
@@ -79,7 +80,7 @@ bool joy_stick_controls(){
     unpackJoystickData(data, xVal, yVal);
     // digitalWrite(LED_BUILTIN, HIGH);
     //path_gen
-    // send_path();
+    send_path();
     return true;
   } else {
     // digitalWrite(LED_BUILTIN, LOW);
@@ -245,7 +246,6 @@ void loop() {
     }
 
     int samples = bufferFilled ? 5 : rpmIndex;
-    float avgRpm = 0;
 
     for (int i = 0; i < samples; i++) {
       avgRpm += rpmBuffer[i];
@@ -255,8 +255,8 @@ void loop() {
       avgRpm /= samples;
     }
 
-    //Serial.print("RPM: ");
-    //Serial.println(avgRpm);
+    Serial.print("RPM: ");
+    Serial.println(avgRpm);
 
     lastSampleTime += samplePeriodMs;
   }

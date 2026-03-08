@@ -1,7 +1,7 @@
 #include <RYUW122_UWB.h>
 
 // --- Pin Definitions ---
-#define RYUW122_RESET_PIN 6
+#define RYUW122_RESET_PIN 3
 
 // --- UWB Module Object ---
 RYUW122_UWB uwb(Serial1);
@@ -11,7 +11,7 @@ void setup() {
   delay(1000);
   Serial1.begin(115200);
 
-  Serial.println("RYUW122 example: Verified Tag");
+  Serial.println("RYUW122 Tag Example");
 
   // Initialize module
   if (!uwb.begin(RYUW122_RESET_PIN)) {
@@ -20,38 +20,34 @@ void setup() {
       delay(500);
     }
   }
-  Serial.println("Module online!");
 
-  // Set network and address
+  // Hardware reset for clean startup
+  uwb.reset();
+  delay(500);
+
+  // Set module mode to TAG
+  uwb.setMode(MODE_TAG);
+  delay(50);
+
+  // Set network ID (max 8 chars) and tag address (max 8 chars)
   uwb.setNetworkID("ICSTEST");
   delay(50);
-  uwb.setAddress("TAG1");
+  uwb.setAddress("TAG001");
   delay(50);
 
-  // Verify Network ID
-  char netID[32];
-  if (uwb.getNetworkID(netID, sizeof(netID))) {
-    Serial.print("Network ID: "); Serial.println(netID);
-  } else {
-    Serial.println("Failed to read Network ID");
-  }
-
-  // Verify Address
-  char addr[32];
-  if (uwb.getAddress(addr, sizeof(addr))) {
-    Serial.print("Tag Address: "); Serial.println(addr);
-  } else {
-    Serial.println("Failed to read Address");
-  }
-
   // Set response message
-  uwb.setTagResponseMessage("HELLO");
+  uwb.setTagResponseMessage("HELLO", 5, true);
+
+  // Increase distance timeout for reliability
+  uwb.setDistanceResponseTimeout(500);
+
+  Serial.println("Tag ready!");
 }
 
 void loop() {
   RYUW122_MessageInfo info;
 
-  // Check for messages from anchors
+  // Listen for messages from anchors
   if (uwb.receiveMessage(info)) {
     Serial.println("----- MESSAGE RECEIVED -----");
     Serial.print("Anchor address: "); Serial.println(info.address);
@@ -60,4 +56,6 @@ void loop() {
     Serial.print("Estimated distance: "); Serial.print(info.distance); Serial.println(" cm");
     Serial.println();
   }
+
+  delay(100);
 }

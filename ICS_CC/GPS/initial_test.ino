@@ -4,48 +4,49 @@
 
 Adafruit_GPS GPS(&GPSSerial);
 
-uint32_t timer = millis();
-int count = 0;
+#define GPSECHO false
 
-void setup() {
+void setup()
+{
   Serial.begin(115200);
   delay(1000);
 
-  Serial.println("GPS Data Reader");
+  Serial.println("GPS Parsing Test");
 
-  // Start GPS
   GPS.begin(9600);
 
-  // Output RMC + GGA (recommended)
+  // Output RMC + GGA sentences
   GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
 
-  // Update rate 1Hz
+  // Update rate
   GPS.sendCommand(PMTK_SET_NMEA_UPDATE_1HZ);
 
   delay(1000);
 }
 
-void loop() {
-
-  // Read GPS characters
+void loop()
+{
   char c = GPS.read();
 
-  // Optional: print raw GPS data
-  // Serial.write(c);
+  if (GPSECHO)
+    if (c) Serial.print(c);
 
-  // Check if a new sentence is received
+  // if a sentence is received
   if (GPS.newNMEAreceived()) {
+
     if (!GPS.parse(GPS.lastNMEA()))
       return;
   }
 
-  // Print data every second
+  // print data every second
+  static uint32_t timer = millis();
   if (millis() - timer > 1000) {
     timer = millis();
 
-    if (GPS.fix) {
-      Serial.println("------ GPS DATA ------");
+    Serial.print("Fix: ");
+    Serial.println((int)GPS.fix);
 
+    if (GPS.fix) {
       Serial.print("Latitude: ");
       Serial.println(GPS.latitudeDegrees, 6);
 
@@ -61,18 +62,7 @@ void loop() {
       Serial.print("Satellites: ");
       Serial.println((int)GPS.satellites);
 
-      Serial.print("Time: ");
-      Serial.print(GPS.hour); Serial.print(":");
-      Serial.print(GPS.minute); Serial.print(":");
-      Serial.println(GPS.seconds);
-
       Serial.println();
-    }
-    else {
-      count ++;
-      Serial.print("Waiting for GPS fix...");
-      Serial.println(count);
-      delay(10000);
     }
   }
 }

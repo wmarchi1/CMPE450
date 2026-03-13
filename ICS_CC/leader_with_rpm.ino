@@ -46,7 +46,7 @@ bool dir2 = false;
 volatile unsigned long pulseCount = 0;
 unsigned long lastSampleTime = 0;
 
-const float pulsesPerRevolution = 30.0;
+const float pulsesPerRevolution = 189.1768;
 const int scPin = 6;
 
 float rpmBuffer[5] = {0};
@@ -81,12 +81,18 @@ bool joy_stick_controls(){
     // digitalWrite(LED_BUILTIN, HIGH);
     //path_gen
     send_path();
+    //digitalWrite(mainMotor1Stop, 1);
+    //digitalWrite(mainMotor2Stop, 1);
     return true;
   } else {
     // digitalWrite(LED_BUILTIN, LOW);
-    velocity = 0;   // failsafe
-    //analogWrite(mainMotor1, 0);
-    //analogWrite(mainMotor2, 0);
+       // failsafe
+    if ((millis() - lastSampleTime) >= 600) {
+      xVal = 500;
+      yVal = 500;
+      set_control_params();
+      drive();
+    }
     //theta = 90;
     //myservo.write(theta);
     return false;
@@ -222,10 +228,10 @@ void setup() {
 }
 
 void loop() {
+  set_control_params();
   if (joy_stick_controls()) {
-    set_control_params();
     drive();
-    debug();
+    //debug();
     const unsigned long samplePeriodMs = 200;  // faster update
 
   if (millis() - lastSampleTime >= samplePeriodMs) {

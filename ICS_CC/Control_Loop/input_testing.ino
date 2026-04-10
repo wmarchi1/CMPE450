@@ -321,7 +321,7 @@ void setup() {
 void loop() {
   set_control_params();
   if (joy_stick_controls()) {
-    sin_drive();
+    ramp_drive();
     //debug();
     const unsigned long samplePeriodMs = 200;  // faster update
 

@@ -39,6 +39,14 @@ int pwmMotor1 = 0;
 int pwmMotor2 = 0;
 float r_RPM_left = 0;
 float r_RPM_right = 0;
+static float position = 0.0f;
+float avgVel;
+
+struct DataPacket {
+  float position;           // meters east of origin
+  float avgRpm;           // meters north of origin
+  float avgVel;     // degrees, 0=north, clockwise
+};
 
 bool dir1 = false;
 bool dir2 = false;
@@ -70,8 +78,11 @@ void unpackJoystickData(uint32_t packed, int &joyX, int &joyY) {
 }
 void send_path() {
   //const char test[] = "Hello world!";
-  bool success = path_radio.write(&avgRpm, sizeof(avgRpm)); // Send the data
-
+    DataPacket pkt;
+    pkt.position        = (float)position;
+    pkt.avgRpm        = (float)avgRpm;
+    pkt.avgVel  = (float)avgVel;
+    bool success = path_radio.write(&pkt, sizeof(pkt));
   if (!success) {
     Serial.println("Path Transmission failed");
   } else {
@@ -236,10 +247,35 @@ void setup() {
   lastSampleTime = millis();
 }
 
+void to_position() {
+  static unsigned long lastTime = millis();     // previous timestamp
+
+  const float radius = 0.0762f;                   // wheel radius (meters)
+  const float pi = 3.14159265f;
+
+  unsigned long currentTime = millis();
+  float dt = (currentTime - lastTime) / 1000.0f;  // convert ms → seconds
+  lastTime = currentTime;
+
+  // linear velocity = RPM * circumference / 60
+  float circumference = 2.0f * pi * radius;
+  avgVel = (avgRpm * circumference) / 60.0f;  // m/s
+
+  // integrate position
+  position += avgVel * dt;
+
+  Serial.print("Position (m): ");
+  Serial.println(position);
+  Serial.print("RPM: ");
+  Serial.println(avgRpm);
+  Serial.print("velocity: ");
+  Serial.println(avgVel);
+}
 void loop() {
   set_control_params();
   if (joy_stick_controls()) {
     drive();
+    to_position();
     //debug();
     const unsigned long samplePeriodMs = 200;  // faster update
 
@@ -270,9 +306,6 @@ void loop() {
     if (samples > 0) {
       avgRpm /= samples;
     }
-
-    Serial.print("RPM: ");
-    Serial.println(avgRpm);
 
     lastSampleTime += samplePeriodMs;
   }

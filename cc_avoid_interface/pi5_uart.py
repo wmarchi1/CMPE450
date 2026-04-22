@@ -1,71 +1,82 @@
 import serial
 import time
 
-TIME_OUT = 0.6 # 600ms
-ser = serial.Serial('/dev/ttyACM0', 115200, timeout=TIME_OUT)
-time.sleep(2) 
-ser.reset_input_buffer()
+class ArduinoPathClient:
+    def __init__(self, port='/dev/ttyACM0', baudrate=115200, timeout=0.6, startup_delay=2):
+        self.TIME_OUT = timeout
+        self.ser = serial.Serial(port, baudrate, timeout=self.TIME_OUT)
+        time.sleep(startup_delay)
+        self.ser.reset_input_buffer()
 
-def get_macro_path(ser): 
-    
-    # initiate a request to the arduino giga
-    ser.write(b"Start\n")
-    start = time.time()
-    path = []
-    # print("here")
-    
-    
-    while True:
-        if time.time() - start > TIME_OUT: # everything needs to be sent within this period
-            break
+    def get_macro_path(self):
+        self.ser.write(b"Start\n")
+        start = time.time()
+        path = []
 
-        line = ser.readline().decode('utf-8').strip() # expect to read (x, y, theta)
-        if line == "END":
-            break
-        else:
-            # print("got here")
-            try:
-                x, y, theta_h = map(int, line[1:-1].split(","))
-                path.append((x, y, theta_h))
-                # path.append(line)
-            except:
-                pass # something went wrong with the map function (line wasn't in the correct format)
-            
-    # print("done")
-    return path
+        while True:
+            if time.time() - start > self.TIME_OUT:
+                break
 
-def send_micro_path(ser):
-    micro_p = ["(0, 1, 50)", "(10, 17, 40)", "(80, 12, 0)", "(85, 20, 15)", "(90, 10, 0)"]
+            line = self.ser.readline().decode('utf-8').strip()
 
-    # lets the arduino giga know that it's ready
-    ser.write(b"Ready\n")
-    start = time.time()
+            if line == "END":
+                break
+            else:
+                try:
+                    x, y, theta_h = map(int, line[1:-1].split(","))
+                    path.append((x, y, theta_h))
+                except Exception:
+                    pass
 
-    while True:
+        return path
 
-        if time.time() - start > TIME_OUT:
-            return False
+    def send_micro_path(self, micro_p=None):
+        if micro_p is None:
+            micro_p = [
+                "(0, 1, 50)",
+                "(10, 17, 40)",
+                "(80, 12, 0)",
+                "(85, 20, 15)",
+                "(90, 10, 0)"
+            ]
 
-        line = ser.readline().decode('utf-8').strip()
-        if line == "Initiate":
-            data = str(len(micro_p)) + "\n" + "\n".join(micro_p) + "\n"
-            ser.write(data.encode("utf-8"))
-        elif line == "Done":
-            return True
-        elif line == "Incomplete":
-            return False
+        self.ser.write(b"Ready\n")
+        start = time.time()
+
+        while True:
+            if time.time() - start > self.TIME_OUT:
+                return False
+
+            line = self.ser.readline().decode('utf-8').strip()
+
+            if line == "Initiate":
+                data = str(len(micro_p)) + "\n" + "\n".join(micro_p) + "\n"
+                self.ser.write(data.encode("utf-8"))
+            elif line == "Done":
+                return True
+            elif line == "Incomplete":
+                return False
+
+    def close(self):
+        if self.ser and self.ser.is_open:
+            self.ser.close()
 
 
+if __name__ == "__main__":
+    client = ArduinoPathClient()
 
-if __name__ == "__main__": 
-    while True:
-        path = get_macro_path(ser)
-        if path:
-            print(path)
+    try:
+        while True:
+            path = client.get_macro_path()
+            if path:
+                print(path)
 
-        time.sleep(5)
+            time.sleep(5)
 
-        if send_micro_path(ser):
-            print("success")
+            if client.send_micro_path():
+                print("success")
 
-        time.sleep(5)
+            time.sleep(5)
+
+    finally:
+        client.close()

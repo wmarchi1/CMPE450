@@ -67,7 +67,7 @@ volatile unsigned long pulseCountR = 0;
 volatile unsigned long pulseCountL = 0;
 unsigned long lastSampleTime = 0;
 
-const float pulsesPerRevolution = 189.1768;
+const float pulsesPerRevolution = 187.79855;
 const int scPinR = 6;
 const int scPinL = 7;
 
@@ -290,11 +290,22 @@ void update_position() {
   const float radius = 0.0762f;
   const float pi = 3.14159265f;
   float circumference = 2.0f * pi * radius;
+  //float signedRpmR;
+  //float signedRpmL;
 
+  //if (dir2) {
+    //signedRpmR = -avgRpm;
+  //} else {
+    //signedRpmR = avgRpm;
+  //}
+
+
+  //avgVel = ((signedRpmR)) * circumference / 60.0f;
   avgVel = (avgRpm * circumference) / 60.0f;
 
   // Convert heading to radians
   float heading_rad = vehicle_heading * PI / 180.0f;
+  // Convert heading to radians
 
   // Project velocity into world frame
   float vx = avgVel * cos(heading_rad);

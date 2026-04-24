@@ -24,6 +24,7 @@ Servo myservo;
 
 //IMU
 Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28);
+// bool e_stop = false;
 
 //  Joystick (RF) 
 int xVal = 512;   // steering
@@ -60,6 +61,12 @@ struct DataPacket {
   float speed;
 };
 
+struct joy_stick_packet{
+  float x = 0;
+  float y = 0;
+  bool e_stop;
+};
+
 bool dir1 = false;
 bool dir2 = false;
 
@@ -83,9 +90,9 @@ void scISRL() {
   pulseCountL++;
 }
 // Unpack 
-void unpackJoystickData(uint32_t packed, int &joyX, int &joyY) {
-  joyX =  packed        & 0x03FF;      // bits 0–9
-  joyY = (packed >> 10) & 0x03FF;      // bits 10–19
+void unpackJoystickData(joy_stick_packet &jdata, int &joyX, int &joyY) {
+  joyX =  jdata.x;      // bits 0–9
+  joyY = jdata.y;      // bits 10–19
   
 }
 void send_path() {
@@ -114,9 +121,10 @@ void send_path() {
 
 bool joy_stick_controls(){
   if (radio.available()) {
-    uint32_t data;
-    radio.read(&data, sizeof(data));
-    unpackJoystickData(data, xVal, yVal);
+    joy_stick_packet jdata;
+    radio.read(&jdata, sizeof(jdata));
+    // e_stop = jdata.e_stop;
+    unpackJoystickData(jdata, xVal, yVal);
     // digitalWrite(LED_BUILTIN, HIGH);
     //path_gen
     send_path();

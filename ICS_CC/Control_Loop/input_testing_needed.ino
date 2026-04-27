@@ -227,21 +227,22 @@ void drive(){
   digitalWrite(mainMotor2Dir, dir2);
 }
 bool flag2 = false;
+
 void ramp_drive() {
   float elapsed = (millis() - lastRampTime) / 1000.0f;
-  rampRPM = constrain(rampRate * elapsed, 0.0f, maxRPM);
   if (flag2 == false){
     dir1 = true;
     dir2 = false;
+    rampRPM = constrain(rampRate * elapsed, 0.0f, maxRPM);
   }
   else {
     dir1 = true;
-    dir2 = false; 
+    dir2 = false;
+    rampRPM = maxRPM - (constrain(rampRate * elapsed, 0.0f, maxRPM));
   }
 
   if(rampRPM >= maxRPM){
     flag2 = true;
-    rampRPM = 0;
   }
 
   pwmMotor1 = constrain((int)rampRPM, 0, 130);

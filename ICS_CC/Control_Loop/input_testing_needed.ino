@@ -59,6 +59,7 @@ struct DataPacket {
   float y;
   float heading;
   float speed;
+  int pwm;
 };
 
 struct joy_stick_packet{
@@ -78,7 +79,7 @@ unsigned long lastRampTime = 0;
 float maxPWM = 130.0;
 float minPWM = 0;
 unsigned long period = 10000;
-float period2 = 50.0;
+float period2 = 500.0;
 
 volatile unsigned long pulseCountR = 0;
 volatile unsigned long pulseCountL = 0;
@@ -113,6 +114,7 @@ void send_path() {
   pkt.y = pos_y;                 // meters north
   pkt.heading = vehicle_heading; // degrees
   pkt.speed = avgVel;            // m/s
+  pkt.pwm = pwmMotor1;
 
   bool success = path_radio.write(&pkt, sizeof(pkt));
 
@@ -282,11 +284,14 @@ void step_drive() {
 }
 
 float t = 0;
-
 void sin_drive() {
   //float t = millis() / 1000.0f;
-  float normalized = (sin(2 * PI * t / period2) + 1.0f) / 2.0f;  // [0, 1]
-  t = millis() / 1000.0f;
+  float normalized = (sin(2 * PI * counter / period2) + 1.0f) / 2.0f;  // [0, 1]
+  //t = millis() / 1000.0f;
+  if (((millis()- lastRampTime) > 100)) {
+    counter = counter + 1;
+    lastRampTime = millis();
+  }
   pwmMotor1 = (int)(minPWM + normalized * (maxPWM - minPWM));
   pwmMotor1 = constrain(pwmMotor1, 0, 130);
 

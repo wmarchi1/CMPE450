@@ -248,9 +248,10 @@ void ramp_drive() {
 
   pwmMotor1 = constrain((int)rampRPM, 0, 130);
   pwmMotor2 = pwmMotor1;
-
-
-  counter = counter + 1;
+  lastRampTime = millis();
+  if ((millis()- lastRampTime) > 1000)) {
+    counter = counter + 1;
+  }
   Serial.print(" RPM R:");
   Serial.println(rampRPM);
 
@@ -449,7 +450,7 @@ void loop() {
   joy_stick_controls();
 
   if ((millis() - lastRFTime) < 500) {
-    sin_drive();
+    ramp_drive();
     update_position();
   } else {
     analogWrite(mainMotor1, 0);

@@ -1,3 +1,32 @@
+/*
+Creators: UMBC ICS CC 2025-2026
+Devices Used: Arduino Uno R4 Wifi, NRF24L01+ (Transceiver) and Joystick Module
+
+Function: Providing inputs for ICS Lead Vehicle. Imputs from Joystick are sent over
+2.4Ghz signal to Lead.
+*/
+
+/*
+//Code for unpacking Binary not used now but could be used in reciever
+void unpackJoystickData(uint32_t packed,
+                        int &joy1X,
+                        int &joy2Y)
+{
+  joy1X =  packed        & 0x03FF;          // bits 0–9
+  joy2Y = (packed >> 10) & 0x03FF;          // bits 10–19
+}
+//Pack integers into first 20 bits of 32 bit binary string
+uint32_t packJoystickData(int joy1X, int joy2Y, int butState1) {
+  uint32_t packed = 0;
+
+  packed |= (uint32_t)(joy1X & 0x03FF);          // bits 0–9
+  packed |= (uint32_t)(joy2Y & 0x03FF) << 10;    // bits 10–19
+  packed |= (uint32_t)(butState1 & 0x01) << 20;
+
+  return packed;
+}
+*/
+
 #include <SPI.h>
 #include <nRF24L01.h>
 #include <RF24.h>
@@ -14,11 +43,13 @@ struct joy_stick_packet{
 
 RF24 radio(CE, CSN);
 const byte address[6] = "00001";
+bool transmission_success;
 
 // First Joystick Pins
 const int xPin1   = A5;
 const int yPin1   = A3;
 const int butPin1 = 2;
+const int ledPin = 4;
 
 // Variables to hold Joystick Values
 int xVal1, yVal1, butState1;
@@ -57,6 +88,7 @@ void setup() {
   radio.stopListening();
 
   pinMode(butPin1, INPUT_PULLUP);
+  // pinMode(ledPin, OUTPUT);
 }
 
 void loop() {
@@ -93,7 +125,11 @@ void loop() {
     jdata.y = yVal1;
     jdata.e_stop = e_stop;   // send current e-stop state
 
-    bool transmission_success = transmit_cmd(jdata);
+    if (!jdata.e_stop)
+      transmission_success = transmit_cmd(jdata);
+    else
+      // digitalWrite(led,)
+      transmission_success = false;
 
     if (!transmission_success) {
       Serial.println("Transmission Failed");

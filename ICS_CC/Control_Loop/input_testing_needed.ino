@@ -227,29 +227,30 @@ void drive(){
   digitalWrite(mainMotor2Dir, dir2);
 }
 bool flag2 = false;
-
+int counter = 0;
 void ramp_drive() {
-  float elapsed = (millis() - lastRampTime) / 10.0f;
+  //float elapsed = (millis() - lastRampTime) / 10.0f;
   if (flag2 == false){
     dir1 = true;
     dir2 = false;
-    rampRPM = constrain(rampRate, 0.0f, maxRPM);
+    rampRPM = constrain(rampRate * counter, 0.0f, maxRPM);
   }
   else {
     dir1 = true;
     dir2 = false;
-    rampRPM = maxRPM - (constrain(rampRate, 0.0f, maxRPM));
+    rampRPM = maxRPM - (constrain(rampRate * counter, 0.0f, maxRPM));
   }
 
   if(rampRPM >= maxRPM){
     flag2 = true;
+    counter = 0;
   }
 
   pwmMotor1 = constrain((int)rampRPM, 0, 130);
   pwmMotor2 = pwmMotor1;
 
 
-
+  counter = counter + 1;
   Serial.print(" RPM R:");
   Serial.println(rampRPM);
 

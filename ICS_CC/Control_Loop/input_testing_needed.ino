@@ -71,14 +71,14 @@ bool dir1 = false;
 bool dir2 = false;
 
 float rampRPM = 0.0;
-float rampRate = 26;
+float rampRate = 6.5;
 float maxRPM = 130;
 unsigned long lastRampTime = 0;
 
 float maxPWM = 130.0;
 float minPWM = 0;
 unsigned long period = 10000;
-float period2 = 100.0;
+float period2 = 50.0;
 
 volatile unsigned long pulseCountR = 0;
 volatile unsigned long pulseCountL = 0;
@@ -248,9 +248,9 @@ void ramp_drive() {
 
   pwmMotor1 = constrain((int)rampRPM, 0, 130);
   pwmMotor2 = pwmMotor1;
-  lastRampTime = millis();
-  if ((millis()- lastRampTime) > 1000)) {
+  if (((millis()- lastRampTime) > 1000)) {
     counter = counter + 1;
+    lastRampTime = millis();
   }
   Serial.print(" RPM R:");
   Serial.println(rampRPM);
@@ -281,10 +281,12 @@ void step_drive() {
   digitalWrite(mainMotor2Dir, dir2);
 }
 
-void sin_drive() {
-  float t = millis() / 1000.0f;
-  float normalized = (sin(2 * PI * t / period2) + 1.0f) / 2.0f;  // [0, 1]
+float t = 0;
 
+void sin_drive() {
+  //float t = millis() / 1000.0f;
+  float normalized = (sin(2 * PI * t / period2) + 1.0f) / 2.0f;  // [0, 1]
+  t = millis() / 1000.0f;
   pwmMotor1 = (int)(minPWM + normalized * (maxPWM - minPWM));
   pwmMotor1 = constrain(pwmMotor1, 0, 130);
 
@@ -450,7 +452,7 @@ void loop() {
   joy_stick_controls();
 
   if ((millis() - lastRFTime) < 500) {
-    ramp_drive();
+    sin_drive();
     update_position();
   } else {
     analogWrite(mainMotor1, 0);

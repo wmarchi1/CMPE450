@@ -71,7 +71,7 @@ bool dir1 = false;
 bool dir2 = false;
 
 float rampRPM = 0.0;
-float rampRate = 1;
+float rampRate = 26;
 float maxRPM = 130;
 unsigned long lastRampTime = 0;
 
@@ -141,7 +141,7 @@ bool joy_stick_controls(){
     send_path();
     return true;
   } else {
-    if ((millis() - lastRFTime) >= 1000) {
+    if ((millis() - lastRFTime) >= 500) {
       xVal = 500;
       yVal = 500;
       set_control_params();
@@ -229,16 +229,16 @@ void drive(){
 bool flag2 = false;
 
 void ramp_drive() {
-  float elapsed = (millis() - lastRampTime) / 1000.0f;
+  float elapsed = (millis() - lastRampTime) / 10.0f;
   if (flag2 == false){
     dir1 = true;
     dir2 = false;
-    rampRPM = constrain(rampRate * elapsed, 0.0f, maxRPM);
+    rampRPM = constrain(rampRate, 0.0f, maxRPM);
   }
   else {
     dir1 = true;
     dir2 = false;
-    rampRPM = maxRPM - (constrain(rampRate * elapsed, 0.0f, maxRPM));
+    rampRPM = maxRPM - (constrain(rampRate, 0.0f, maxRPM));
   }
 
   if(rampRPM >= maxRPM){
@@ -447,7 +447,7 @@ void loop() {
 
   joy_stick_controls();
 
-  if ((millis() - lastRFTime) < 1000) {
+  if ((millis() - lastRFTime) < 500) {
     sin_drive();
     update_position();
   } else {

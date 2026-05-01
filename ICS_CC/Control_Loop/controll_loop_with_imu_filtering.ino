@@ -1,0 +1,476 @@
+/*
+ * Giga R1 NRF24L01 Receiver
+ * RF joystick → servo + motors
+ */
+
+#include <SPI.h>
+#include <nRF24L01.h>
+#include <RF24.h>
+#include <Servo.h>
+#include <Wire.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BNO055.h>
+
+
+// RF
+RF24 radio(2, 3);              // CE, CSN
+const byte address[6] = "00001";
+
+RF24 path_radio(27, 29);
+const byte address2[6] = "00100"; //leader-follow address used for transmitting path info
+
+// Servo
+Servo myservo;
+
+//IMU
+Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28);
+// bool e_stop = false;
+
+//  Joystick (RF) 
+int xVal = 512;   // steering
+int yVal = 512;   // throttle
+
+float pos_x = 0.0f;   // meters (east)
+float pos_y = 0.0f;   // meters (north)
+
+// Control Variables 
+int theta = 90;
+int theta_old = 90;
+float velocity = 0;
+float avgRpm = 0;
+float vehicle_heading = 0;
+
+int mainMotor1 = 48;
+int mainMotor2 = 49;
+int mainMotor1Dir = 36;
+int mainMotor2Dir = 37;
+int mainMotor1Stop = 33;
+int mainMotor2Stop = 32;
+
+int pwmMotor1 = 0;
+int pwmMotor2 = 0;
+float r_RPM_left = 0;
+float r_RPM_right = 0;
+static float position = 0.0f;
+float avgVel;
+float vel_imu   = 0.0f;        // IMU-integrated forward velocity (m/s)
+float accel_enc = 0.0f;        // forward acceleration derived from encoder velocity (m/s²)
+float accel_imu = 0.0f;        // forward acceleration from IMU linear accelerometer (m/s²)
+// Leaky-integrator time constant: prevents accelerometer bias from causing vel_imu to drift
+// unboundedly. Smaller = faster decay to zero when stationary; larger = holds velocity longer.
+const float IMU_VEL_TAU        = 2.0f;
+// Accelerometer readings below this (m/s²) are treated as motor vibration noise and ignored.
+// Raise if vel_imu drifts while stationary; lower if slow accelerations are being missed.
+const float IMU_ACCEL_DEADBAND = 0.75f;
+// Max allowed difference between encoder and IMU acceleration before slip is flagged (m/s²).
+// Raise to reduce false positives on rough terrain; lower for earlier slip detection.
+const float SLIP_ACCEL_THRESHOLD = 0.8f;
+// Minimum encoder speed (m/s) before slip detection activates — prevents false flags at standstill.
+const float SLIP_MIN_SPEED       = 0.0f;
+
+bool is_slipping = false;
+
+struct DataPacket {
+  float x;
+  float y;
+  float heading;
+  float speed;
+  float vel_imu;   // IMU-integrated velocity along heading direction (m/s)
+  float   accel_enc;  // acceleration from encoder velocity differentiation (m/s²)
+  float   accel_imu;  // acceleration from IMU linear accelerometer (m/s²)
+  uint8_t slipping;   // 1 = slip detected, 0 = normal (uint8_t avoids struct padding issues)
+};
+
+struct joy_stick_packet{
+  float x = 0;
+  float y = 0;
+  bool e_stop;
+};
+
+bool dir1 = false;
+bool dir2 = false;
+
+volatile unsigned long pulseCountR = 0;
+volatile unsigned long pulseCountL = 0;
+unsigned long lastSampleTime = 0;
+
+const float pulsesPerRevolution = 187.79855;
+const int scPinR = 6;
+const int scPinL = 7;
+
+float rpmBuffer[5]      = {0};
+float accelEncBuffer[5] = {0};
+float accelImuBuffer[5] = {0};
+int  rpmIndex     = 0;
+bool bufferFilled = false;
+
+void scISRR() {
+  pulseCountR++;
+}
+
+void scISRL() {
+  pulseCountL++;
+}
+// Unpack 
+void unpackJoystickData(joy_stick_packet &jdata, int &joyX, int &joyY) {
+  joyX =  jdata.x;      // bits 0–9
+  joyY = jdata.y;      // bits 10–19
+  
+}
+void send_path() {
+  DataPacket pkt;
+
+  pkt.x = pos_x;                 // meters east
+  pkt.y = pos_y;                 // meters north
+  pkt.heading = vehicle_heading; // degrees
+  pkt.speed     = avgVel;        // encoder velocity (m/s)
+  pkt.vel_imu   = vel_imu;      // IMU-integrated velocity (m/s)
+  pkt.accel_enc = accel_enc;
+  pkt.accel_imu = accel_imu;
+  pkt.slipping  = is_slipping ? 1 : 0;
+
+  bool success = path_radio.write(&pkt, sizeof(pkt));
+
+  if (!success) {
+    Serial.println("TX FAIL");
+  } else {
+    Serial.print("TX OK | X: ");    Serial.print(pkt.x, 2);
+    Serial.print(" Y: ");           Serial.print(pkt.y, 2);
+    Serial.print(" H: ");           Serial.print(pkt.heading, 1);
+    Serial.print(" V: ");           Serial.print(pkt.speed, 2);
+    Serial.print(" VI: ");          Serial.print(pkt.vel_imu, 2);
+    Serial.print(" A_enc: ");       Serial.print(pkt.accel_enc, 2);
+    Serial.print(" A_imu: ");       Serial.print(pkt.accel_imu, 2);
+    Serial.print(" SLIP: ");        Serial.println(pkt.slipping);
+  }
+}
+
+bool joy_stick_controls(){
+  if (radio.available()) {
+    joy_stick_packet jdata;
+    radio.read(&jdata, sizeof(jdata));
+    // e_stop = jdata.e_stop;
+    unpackJoystickData(jdata, xVal, yVal);
+    // digitalWrite(LED_BUILTIN, HIGH);
+    //path_gen
+    send_path();
+    //digitalWrite(mainMotor1Stop, 1);
+    //digitalWrite(mainMotor2Stop, 1);
+    return true;
+  } else {
+    // digitalWrite(LED_BUILTIN, LOW);
+       // failsafe
+    if ((millis() - lastSampleTime) >= 600) {
+      xVal = 500;
+      yVal = 500;
+      set_control_params();
+      drive();
+    }
+    //theta = 90;
+    //myservo.write(theta);
+    return false;
+  }
+}
+
+void set_control_params(){
+  // STEERING (X) 
+  if (xVal < 488)
+    theta = map(xVal, 0, 488, 158, 90);
+  else if (xVal > 535)
+    theta = map(xVal, 535, 1023, 90, 22);
+  else
+    theta = 90;
+
+  // Steering slew-rate limit
+  if (theta - theta_old >= 5)  theta = theta_old + 5;
+  if (theta - theta_old <= -5) theta = theta_old - 5;
+
+  myservo.write(theta);
+  theta_old = theta;
+
+  //  THROTTLE (Y) 
+  if (yVal < 488)
+    //velocity = map(yVal, 0, 488, -200, 0) / 100.0f;
+    velocity = ( (float)(yVal - 0) ) * (0.0 - (-2.0)) / (488.0 - 0.0) + (-2.0);
+  else if (yVal > 535)
+    //velocity = map(yVal, 535, 1023, 0, 200) / 100.0f;
+    velocity = ( (float)(yVal - 535) ) * (2.0 - 0.0) / (1023.0 - 535.0) + 0.0 *1.0;
+  else
+    velocity = 0;
+
+  //  DIFFERENTIAL DRIVE 
+  const float wheelBaseFactor = 1.515f;
+  const float offsetFactor    = 0.1875f;
+
+  float theta_rad = theta * PI / 180.0f;
+
+  if (theta == 90) {
+    r_RPM_left  = velocity;
+    r_RPM_right = velocity;
+  } else {
+    float turnFactor = tan(theta_rad);
+    r_RPM_left  = velocity * (1.0f + offsetFactor / (wheelBaseFactor * turnFactor));
+    r_RPM_right = velocity * (1.0f - offsetFactor / (wheelBaseFactor * turnFactor));
+  }
+}
+
+void drive(){
+  if (r_RPM_left < 0) {
+    dir1 = false;
+    //digitalWrite(mainMotor1Dir, LOW);
+    r_RPM_left = abs(r_RPM_left);
+
+  }
+  else {
+    dir1 = true;
+    //digitalWrite(mainMotor1Dir, HIGH);
+  }
+  if (r_RPM_right < 0) {
+    dir2 = true;
+    //digitalWrite(mainMotor2Dir, LOW);
+    r_RPM_right = abs(r_RPM_right);
+  }
+  else {
+    dir2 = false;
+    //digitalWrite(mainMotor2Dir, HIGH);
+  }
+
+
+  // ================= PWM =================
+  pwmMotor1 = (int)( (r_RPM_left  / 2.6f) * 130.0f );
+  pwmMotor2 = (int)( (r_RPM_right / 2.6f) * 130.0f );
+  pwmMotor1 = constrain(pwmMotor1, 0, 130);
+  pwmMotor2 = constrain(pwmMotor2, 0, 130);
+
+  analogWrite(mainMotor1, pwmMotor1);
+  analogWrite(mainMotor2, pwmMotor2);
+  digitalWrite(mainMotor1Dir, dir1);
+  digitalWrite(mainMotor2Dir, dir2);
+}
+
+void debug() {
+  Serial.print("X:");
+  Serial.print(xVal);
+  Serial.print(" Y:");
+  Serial.print(yVal);
+  Serial.print(" Theta:");
+  Serial.print(theta);
+  Serial.print(" Vel:");
+  Serial.print(velocity);
+  Serial.print(" PWM1:");
+  Serial.print(pwmMotor1);
+  Serial.print(" PWM2:");
+  Serial.println(pwmMotor2);
+  Serial.print(" RPM Right:");
+  Serial.print(r_RPM_right);
+  Serial.print(" RPM Left:");
+  Serial.println(r_RPM_left);
+}
+
+void setup() {
+  Serial.begin(9600);
+  delay(1000);
+  // while (!Serial) {}
+  Wire.begin();
+  if (!bno.begin()) {
+    Serial.println("No BNO055 detected");
+    //while (1);
+  }
+
+
+  SPI1.begin();
+
+  //joystick input receiver
+  radio.begin(&SPI1);
+  radio.openReadingPipe(1, address);
+  radio.setPALevel(RF24_PA_MIN);
+  radio.startListening();
+
+  //path_gen transmitter
+  SPI.begin();
+  path_radio.begin(&SPI);
+  path_radio.openWritingPipe(address2);
+  path_radio.setPALevel(RF24_PA_MIN);
+  path_radio.stopListening();
+  delay(100);
+
+
+  myservo.attach(9);
+
+  pinMode(mainMotor1, OUTPUT);
+  pinMode(mainMotor2, OUTPUT);
+  pinMode(mainMotor1Dir, OUTPUT);
+  pinMode(mainMotor2Dir, OUTPUT);
+  // pinMode(mainMotor1Stop, OUTPUT);
+  // pinMode(mainMotor2Stop, OUTPUT);
+
+  pinMode(LED_BUILTIN, OUTPUT);
+  pinMode(scPinR, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(scPinR), scISRR, RISING);
+
+  pinMode(scPinL, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(scPinL), scISRL, RISING);
+  lastSampleTime = millis();
+}
+
+void update_position() {
+  static unsigned long lastTime = millis();
+
+  unsigned long currentTime = millis();
+  float dt = (currentTime - lastTime) / 1000.0f;
+  lastTime = currentTime;
+
+  // Convert RPM → velocity (m/s)
+  const float radius = 0.0762f;
+  const float pi = 3.14159265f;
+  float circumference = 2.0f * pi * radius;
+  //float signedRpmR;
+  //float signedRpmL;
+
+  //if (dir2) {
+    //signedRpmR = -avgRpm;
+  //} else {
+    //signedRpmR = avgRpm;
+  //}
+
+
+  //avgVel = ((signedRpmR)) * circumference / 60.0f;
+  float prevVel = avgVel;
+  avgVel = (avgRpm * circumference) / 60.0f;
+  accel_enc = (dt > 0.0f) ? (avgVel - prevVel) / dt : 0.0f;
+
+  // Convert heading to radians
+  float heading_rad = vehicle_heading * PI / 180.0f;
+  // Convert heading to radians
+
+  // Project velocity into world frame
+  float vx = avgVel * cos(heading_rad);
+  float vy = avgVel * sin(heading_rad);
+
+  // Integrate position
+  pos_x += vx * dt;
+  pos_y += vy * dt;
+
+  Serial.print("X: ");
+  Serial.print(pos_x, 2);
+  Serial.print("  Y: ");
+  Serial.print(pos_y, 2);
+  Serial.print("  Heading: ");
+  Serial.print(vehicle_heading);
+  Serial.print("  Vel: ");
+  Serial.println(avgVel);
+}
+
+void updateImuVelocity() {
+  static unsigned long lastTime = millis();
+  unsigned long now = millis();
+  float dt = (now - lastTime) / 1000.0f;
+  lastTime = now;
+
+  sensors_event_t accelData;
+  bno.getEvent(&accelData, Adafruit_BNO055::VECTOR_LINEARACCEL);
+
+  // accel.x is forward acceleration when the IMU X-axis points toward the vehicle's front.
+  // If vel_imu reads inverted on your bench, negate this value.
+  float fwd_accel = accelData.acceleration.x;
+  if (fabsf(fwd_accel) < IMU_ACCEL_DEADBAND) fwd_accel = 0.0f;
+  accel_imu = fwd_accel;
+  vel_imu = vel_imu * (1.0f - dt / IMU_VEL_TAU) + fwd_accel * dt;
+  //vel_imu += fwd_accel * dt;
+}
+
+float getHeading() {
+  static float heading_smooth = 0;
+  static bool initialized = false;
+
+  imu::Quaternion q = bno.getQuat();
+
+  // Extract yaw from quaternion (rotation about vertical axis)
+  float sinYaw = 2.0f * (q.w() * q.z() + q.x() * q.y());
+  float cosYaw = 1.0f - 2.0f * (q.y() * q.y() + q.z() * q.z());
+  float raw = atan2f(sinYaw, cosYaw) * 180.0f / PI;
+
+  // Wrap to 0–360
+  if (raw < 0.0f)    raw += 360.0f;
+  if (raw >= 360.0f) raw -= 360.0f;
+
+  if (!initialized) {
+    heading_smooth = raw;
+    initialized = true;
+    return heading_smooth;
+  }
+
+  // Shortest path difference
+  float diff = raw - heading_smooth;
+  if (diff > 180.0f) diff -= 360.0f;
+  if (diff < -180.0f) diff += 360.0f;
+
+  // Rate limit (deg per loop)
+  const float MAX_STEP = 1.0f;
+  if (diff >  MAX_STEP) diff =  MAX_STEP;
+  if (diff < -MAX_STEP) diff = -MAX_STEP;
+
+  // Low-pass filter
+  const float ALPHA = 0.05f;
+  heading_smooth += diff * ALPHA;
+
+  // Wrap again
+  if (heading_smooth >= 360.0f) heading_smooth -= 360.0f;
+  if (heading_smooth < 0.0f)    heading_smooth += 360.0f;
+
+  return heading_smooth;
+}
+void loop() {
+  set_control_params();
+
+  vehicle_heading = getHeading();
+
+  if (joy_stick_controls()) {
+    drive();
+    update_position();
+    updateImuVelocity();
+    //debug();
+    const unsigned long samplePeriodMs = 200;  // faster update
+
+  if (millis() - lastSampleTime >= samplePeriodMs) {
+    noInterrupts();
+    unsigned long count = (pulseCountR + pulseCountL) / 2;
+    pulseCountR = 0;
+    pulseCountL = 0;
+    interrupts();
+
+    float pulsesPerSecond = (count * 1000.0) / samplePeriodMs;
+    float rpm = (pulsesPerSecond * 60.0) / pulsesPerRevolution;
+
+    rpmBuffer[rpmIndex]      = rpm;
+    accelEncBuffer[rpmIndex] = accel_enc;
+    accelImuBuffer[rpmIndex] = accel_imu;
+    rpmIndex++;
+
+    if (rpmIndex >= 5) {
+      rpmIndex = 0;
+      bufferFilled = true;
+    }
+
+    int samples = bufferFilled ? 5 : rpmIndex;
+
+    float sumRpm = 0, sumAenc = 0, sumAimu = 0;
+    for (int i = 0; i < samples; i++) {
+      sumRpm  += rpmBuffer[i];
+      sumAenc += accelEncBuffer[i];
+      sumAimu += accelImuBuffer[i];
+    }
+
+    if (samples > 0) {
+      avgRpm    = sumRpm  / samples;
+      accel_enc = sumAenc / samples;
+      accel_imu = sumAimu / samples;
+    }
+
+    is_slipping = (avgVel > SLIP_MIN_SPEED) &&
+                  (fabsf(accel_enc - accel_imu) > SLIP_ACCEL_THRESHOLD);
+
+    lastSampleTime += samplePeriodMs;
+  }
+  }
+}

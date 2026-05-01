@@ -10,9 +10,9 @@ float currentPos_;
 float desiredVel_;
 float currentVel_;
 struct DataPacket {
-  //float desiredPos;
+  float desiredPos;
   float currentPos;
-  //float desiredVel;
+  float desiredVel;
   float currentVel;
 };
 void setup() {
@@ -39,17 +39,17 @@ void loop() {
     // Read first float (avgRpm)
     DataPacket pkt;
     radio.read(&pkt, sizeof(pkt));
-    //desiredPos_ = pkt.desiredPos;
+    desiredPos_ = pkt.desiredPos;
     currentPos_ = pkt.currentPos;
     currentVel_ = pkt.currentVel;
-    //desiredVel_ = pkt.desiredVel;
+    desiredVel_ = pkt.desiredVel;
     // Print results
-    //Serial.print("Desired Position:");
-    //Serial.print(desiredPos_);
+    Serial.print("Desired Position:");
+    Serial.print(desiredPos_);
     Serial.print(" | Current Position: ");
     Serial.print(currentPos_);
-    //Serial.print(" | Desired Velocity: ");
-    //Serial.println(desiredVel_);
+    Serial.print(" | Desired Velocity: ");
+    Serial.println(desiredVel_);
     Serial.print(" | Current Velocity: ");
     Serial.println(currentVel_);
   }

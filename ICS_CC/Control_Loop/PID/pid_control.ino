@@ -16,9 +16,9 @@ RF24 path_radio(27, 29);          // CE, CSN
 const byte address2[6] = "00100"; // telemetry address
 
 struct DataPacket {
-  //float desiredPos;
+  float desiredPos;
   float currentPos;
-  //float desiredVel;
+  float desiredVel;
   float currentVel;
 };
 
@@ -61,7 +61,7 @@ float Ki_pos = 0.0;
 float Kd_pos = 0.0;
 
 // ===================== Velocity PID Gains =====================
-float Kp_vel = 40.0;
+float Kp_vel = 80.0;
 float Ki_vel = 0.0;
 float Kd_vel = 0.0;
 
@@ -89,9 +89,9 @@ void scISRL() {
 void sendTelemetry() {
   DataPacket pkt;
 
-  //pkt.desiredPos = desiredPosition;
+  pkt.desiredPos = desiredPosition;
   pkt.currentPos = currentPosition;
-  //pkt.desiredVel = desiredVelocity;
+  pkt.desiredVel = desiredVelocity;
   pkt.currentVel = currentVelocity;
 
   bool success = path_radio.write(&pkt, sizeof(pkt));

@@ -46,8 +46,8 @@ const byte address[6] = "00001";
 bool transmission_success;
 
 // First Joystick Pins
-const int xPin1   = A5;
-const int yPin1   = A3;
+const int xPin1   = A3;
+const int yPin1   = A5;
 const int butPin1 = 2;
 const int ledPin = 4;
 

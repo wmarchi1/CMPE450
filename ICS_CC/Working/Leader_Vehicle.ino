@@ -82,9 +82,9 @@ bool joy_stick_controls(){
 void set_control_params(){
   // STEERING (X) 
   if (xVal < 488)
-    theta = map(xVal, 0, 488, 158, 90);
+    theta = map(xVal, 0, 488, 90, 22);
   else if (xVal > 535)
-    theta = map(xVal, 535, 1023, 90, 22);
+    theta = map(xVal, 535, 1023, 158, 90);
   else
     theta = 90;
 

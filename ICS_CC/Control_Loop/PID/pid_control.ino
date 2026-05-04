@@ -56,14 +56,14 @@ float currentPosition = 0.0;   // meters
 float currentVelocity = 0.0;   // m/s
 
 // ===================== Position PID Gains =====================
-float Kp_pos = 1.0;
-float Ki_pos = 0.0;
-float Kd_pos = 0.0;
+float Kp_pos = 1.81493632280259;
+float Ki_pos = 0.23534906486077;
+float Kd_pos = 2.18688527899715;
 
 // ===================== Velocity PID Gains =====================
-float Kp_vel = 80.0;
-float Ki_vel = 0.0;
-float Kd_vel = 0.0;
+float Kp_vel = 0.707021748901557;
+float Ki_vel = 0.431770610575882;
+float Kd_vel = -0.437408677228963;
 
 // ===================== PID Memory =====================
 float posIntegral = 0.0;
@@ -74,7 +74,7 @@ float prevVelError = 0.0;
 
 // ===================== Limits =====================
 float maxVelocityCommand = 2.0;   // m/s
-int maxPWM = 253;
+int maxPWM = 130;
 
 // ===================== Interrupts =====================
 void scISRR() {
@@ -188,22 +188,22 @@ void autonomousControl(float dt) {
   float posError = desiredPosition - currentPosition;
 
   posIntegral += posError * dt;
-  float posDerivative = (posError - prevPosError) / dt;
+  float posDerivative = (currentPosition - prevPosError) / dt;
 
-  desiredVelocity =
+  float velocityCommand =
       Kp_pos * posError
     + Ki_pos * posIntegral
-    + Kd_pos * posDerivative;
+    - Kd_pos * posDerivative;
 
   prevPosError = posError;
 
-  desiredVelocity = constrain(
-    desiredVelocity,
-    -maxVelocityCommand,
-    maxVelocityCommand
-  );
+  //desiredVelocity = constrain(
+  //  desiredVelocity,
+  //  -maxVelocityCommand,
+  //  maxVelocityCommand
+  //);
 
-  float velError = desiredVelocity - currentVelocity;
+  float velError = desiredVelocity + velocityCommand - currentVelocity;
 
   velIntegral += velError * dt;
   float velDerivative = (velError - prevVelError) / dt;
@@ -215,7 +215,8 @@ void autonomousControl(float dt) {
 
   prevVelError = velError;
 
-  pwmCommand = constrain(pwmCommand, -maxPWM, maxPWM);
+  //pwmCommand = constrain(pwmCommand, -maxPWM, maxPWM);
+  pwmCommand = constrain(pwmCommand, 0, maxPWM);
 
   drivePWM(pwmCommand);
 }

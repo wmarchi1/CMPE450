@@ -115,9 +115,9 @@ void set_control_params(){
     r_RPM_left  = velocity;
     r_RPM_right = velocity;
   } else {
-    float turnFactor = tan(theta_rad);
-    r_RPM_left  = velocity * (1.0f + offsetFactor / (wheelBaseFactor * turnFactor));
-    r_RPM_right = velocity * (1.0f - offsetFactor / (wheelBaseFactor * turnFactor));
+    float turnFactor = tan(theta_rad - (PI/2));
+    r_RPM_left  = velocity * (1.0f + ((turnFactor * offsetFactor) / (wheelBaseFactor));
+    r_RPM_right = velocity * (1.0f - ((turnFactor * offsetFactor) / (wheelBaseFactor));
   }
 }
 

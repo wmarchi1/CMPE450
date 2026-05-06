@@ -56,8 +56,8 @@ float avgVel;
 int servoAngle = 90;
 
 struct DataPacket {
-  float x;
-  float y;
+  //float x;
+  //float y;
   float heading;
   float speed;
   int pwm;
@@ -112,8 +112,8 @@ void unpackJoystickData(joy_stick_packet &jdata, int &joyX, int &joyY) {
 void send_path() {
   DataPacket pkt;
 
-  pkt.x = pos_x;                 // meters east
-  pkt.y = pos_y;                 // meters north
+  //pkt.x = pos_x;                 // meters east
+  //pkt.y = pos_y;                 // meters north
   pkt.heading = vehicle_heading; // degrees
   pkt.speed = avgVel;            // m/s
   pkt.pwm = pwmMotor1;
@@ -291,20 +291,24 @@ int minServoAngle = 22;
 int currentAngle = 90;
 void steering_ramp_drive() {
   if (flag2 == false){
+    pwmMotor1 = 120;
+    pwmMotor2 = 120;
     currentAngle = constrain((120 + counter),120,maxServoAngle);
     myservo.write(currentAngle);
   }
-  else {
-    currentAngle = constrain((90 - counter), minServoAngle, 90);
-    myservo.write(currentAngle);
-  }
+  // else {
+  //   currentAngle = constrain((90 - counter), minServoAngle, 90);
+  //   myservo.write(currentAngle);
+  // }
 
   if(currentAngle >= maxServoAngle){
     flag2 = true;
     counter = 0;
     delay(5000);
     myservo.write(90);
-  }
+    pwmMotor1 = 0;
+    pwmMotor2 = 0;
+   }
   if (((millis()- lastRampTime) > 500)) {
     counter = counter + 1;
     lastRampTime = millis();
@@ -324,10 +328,8 @@ void steering_ramp_drive() {
     r_RPM_left  = velocity * (1.0f + offsetFactor / (wheelBaseFactor * turnFactor));
     r_RPM_right = velocity * (1.0f - offsetFactor / (wheelBaseFactor * turnFactor));
   }
-  dir1 = true;
-  dir2 = false;
-  pwmMotor1 = 30;
-  pwmMotor2 = 30;
+  dir1 = false;
+  dir2 = true;
   analogWrite(mainMotor1, pwmMotor1);
   analogWrite(mainMotor2, pwmMotor2);
   digitalWrite(mainMotor1Dir, dir1);
@@ -496,19 +498,20 @@ float getHeading() {
   return heading_smooth;
 }
 void loop() {
-  //set_control_params();
+  set_control_params(); //uncomment in all other than steering_ramp_drive
 
   vehicle_heading = getHeading();
 
   joy_stick_controls();
 
   if ((millis() - lastRFTime) < 500) {
-    steering_ramp_drive();
+    step_drive();
     update_position();
     debug();
   } else {
     analogWrite(mainMotor1, 0);
     analogWrite(mainMotor2, 0);
+    //myservo.write(90);
   }
 
   const unsigned long samplePeriodMs = 200;

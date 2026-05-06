@@ -159,9 +159,9 @@ bool joy_stick_controls(){
 void set_control_params(){
   // STEERING (X) 
   if (xVal < 488)
-    theta = map(xVal, 0, 488, 158, 90);
+    theta = map(xVal, 0, 488, 22, 90);
   else if (xVal > 535)
-    theta = map(xVal, 535, 1023, 90, 22);
+    theta = map(xVal, 535, 1023, 90, 158);
   else
     theta = 90;
 
@@ -192,9 +192,9 @@ void set_control_params(){
     r_RPM_left  = velocity;
     r_RPM_right = velocity;
   } else {
-    float turnFactor = tan(theta_rad);
-    r_RPM_left  = velocity * (1.0f + offsetFactor / (wheelBaseFactor * turnFactor));
-    r_RPM_right = velocity * (1.0f - offsetFactor / (wheelBaseFactor * turnFactor));
+    float turnFactor = tan(theta_rad - (PI/2));
+    r_RPM_left  = velocity * (1.0f + ((turnFactor * offsetFactor) / (wheelBaseFactor)));
+    r_RPM_right = velocity * (1.0f - ((turnFactor * offsetFactor) / (wheelBaseFactor)));
   }
 }
 
@@ -505,7 +505,7 @@ void loop() {
   joy_stick_controls();
 
   if ((millis() - lastRFTime) < 500) {
-    step_drive();
+    drive();
     update_position();
     debug();
   } else {

@@ -1,11 +1,18 @@
 #include <string>
 #include <Arduino.h>
 
+struct Coord {
+    float x;
+    float y;
+    float speed;
+    float heading;
+};
+
 class Path {
 public:
     Path(int cap) {
         capacity = (cap < 1) ? 1 : cap;
-        buff = new std::string[capacity]();
+        buff = new Coord[capacity];   // one-time allocation
         curr = 0;
         end = 0;
     }
@@ -15,36 +22,35 @@ public:
         buff = nullptr;
     }
 
-    // Returns the oldest element (head)
-    std::string getHead() {
-        if (size() == 0)
-            return "Error! Empty buff";
-        return buff[curr % capacity];
-    }
-
-    // Returns the newest element (rear)
-    std::string getRear() {
-        if (size() == 0)
-            return "Error! Empty buff";
-        return buff[(end - 1) % capacity];
-    }
-
-    // Inserts a new element if there is space
-    bool insert(const std::string& coord) {
+    // Insert new coordinate
+    bool insert(const Coord& coord) {
         if (size() >= capacity) {
-            // Buffer is full; cannot overwrite
-            return false;
+            return false; // no overwrite
         }
         buff[end % capacity] = coord;
         end++;
         return true;
     }
 
-    // Processes (reads) the next element if available
-    std::string process() {
-        if (size() == 0)
-            return "Error! Empty buff";
-        std::string coord = buff[curr % capacity];
+    // Get oldest element
+    bool getHead(Coord& out) {
+        if (size() == 0) return false;
+        out = buff[curr % capacity];
+        return true;
+    }
+
+    // Get newest element
+    bool getRear(Coord& out) {
+        if (size() == 0) return false;
+        out = buff[(end + capacity - 1) % capacity];
+        return true;
+    }
+
+    // Pop next element
+    bool process(Coord& out) {
+        if (size() == 0) return false;
+
+        out = buff[curr % capacity];
         curr++;
 
         // Normalize to prevent overflow
@@ -52,57 +58,37 @@ public:
             end -= curr;
             curr = 0;
         }
-        return coord;
+
+        return true;
     }
 
-    // Returns the number of unread elements
     uint64_t size() const {
         return end - curr;
     }
 
-    bool move_curr(const std::string& coord) { // moves the curr position to the position of the given node
-        uint64_t location = search(coord);
-
-        if (location >= end)
-            // coordinate doesn't exist
-            return false;
-        
-        curr = location;
-        return true;
-        
-    }
-
-    uint64_t search(const std::string& coord) {
+    // Debug print (no heap usage)
+    void transmit() {
+        char buffer[80];
         uint64_t start = curr;
 
         while (start < end) {
-            if (buff[start % capacity] == coord) {
-                return start;
-            }
+            Coord& c = buff[start % capacity];
 
+            snprintf(buffer, sizeof(buffer),
+                     "(%.2f, %.2f, %.2f, %.2f)",
+                     c.x, c.y, c.speed, c.heading);
+
+            Serial.println(buffer);
             start++;
         }
-
-        return start;
-    }
-
-    void transmit() { //sends data through UART
-        uint64_t start = curr;
-
-        while (start < end) {
-            Serial.println(buff[start % capacity].c_str()); // println wants arduino's String class not the std::string class
-            start++;
-        }
-
     }
 
 private:
     int capacity;
-    uint64_t curr;  // consumer position
-    uint64_t end;   // producer position
-    std::string* buff;
+    uint64_t curr;
+    uint64_t end;
+    Coord* buff;
 };
-
 // int PATH_LEN = 5;
 // std::string path[5] = {"(0, 0, 40)", "(1, 0, 70)", "(1, 3, 20)", "(3, 3, 0)", "(5, 3, 0)"};
 
@@ -114,11 +100,16 @@ int micro_path_size = 0;
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
-  macro_path.insert("(0, 0, 40)");
-  macro_path.insert("(1, 0, 70)");
-  macro_path.insert("(1, 3, 20)");
-  macro_path.insert("(3, 3, 0)");
-  macro_path.insert("(5, 3, 0)");
+  Coord test = {.x=0, .y=0, .speed=12, .heading=15};
+  Coord test2 = {.x=1.12, .y=3, .speed=22.4, .heading=10};
+  Coord test3 = {.x=3, .y=3, .speed=0.992, .heading=90};
+  Coord test4 = {.x=5.01, .y=3.14, .speed=18.246, .heading=17};
+
+
+  macro_path.insert(test);
+  macro_path.insert(test2);
+  macro_path.insert(test3);
+  macro_path.insert(test4);
 }
 
 void loop() {

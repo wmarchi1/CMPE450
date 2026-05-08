@@ -15,8 +15,7 @@
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
 
-
-
+Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28);
 // ===================== NRF PATH RADIO =====================
 RF24 path_radio(27, 29);          // CE, CSN
 const byte address2[6] = "00100"; // telemetry address
@@ -26,6 +25,10 @@ struct DataPacket {
   float currentPos;
   float desiredVel;
   float currentVel;
+  float desiredHeading;
+  float currentHeading;
+  int servoCommand;
+  float steeringCorrection;
 };
 
 // ===================== Motor Pins =====================
@@ -54,7 +57,7 @@ unsigned long lastTXTime = 0;
 const unsigned long txPeriodMs = 100;       // 10 Hz NRF transmit
 
 // ===================== Desired Values =====================
-float desiredPosition = 15.0;   // meters
+float desiredPosition = 20.0;   // meters
 float desiredVelocity = 0.0;   // m/s
 
 // ===================== Measured Values =====================
@@ -84,16 +87,17 @@ int maxPWM = 130;
 
 // ===================== Servo Steering =====================
 Servo steeringServo;
-
+int servoCommand = 0;
+float steeringCorrection = 0;
 const int servoPin = 9;
 
 // ===================== Heading PID =====================
-float desiredHeading = 0.0;     // degrees
+float desiredHeading = 0;     // degrees
 float currentHeading = 0.0;     // from IMU
 
-float Kp_heading = 1.0;
-float Ki_heading = 0.0;
-float Kd_heading = 0.1;
+float Kp_heading = 0.5;
+float Ki_heading = 0.1;
+float Kd_heading = 0.0;
 
 float headingIntegral = 0.0;
 float prevHeadingError = 0.0;
@@ -119,6 +123,12 @@ void sendTelemetry() {
   pkt.currentPos = currentPosition;
   pkt.desiredVel = desiredVelocity;
   pkt.currentVel = currentVelocity;
+  pkt.desiredHeading = desiredHeading;
+  pkt.currentHeading = currentHeading;
+  pkt.servoCommand = servoCommand;
+  pkt.steeringCorrection = steeringCorrection;
+
+
 
   bool success = path_radio.write(&pkt, sizeof(pkt));
 
@@ -273,14 +283,14 @@ void steeringPID(float dt) {
   headingIntegral += error * dt;
   float derivative = (error - prevHeadingError) / dt;
 
-  float steeringCorrection =
+  steeringCorrection =
       Kp_heading * error
     + Ki_heading * headingIntegral
     + Kd_heading * derivative;
 
   prevHeadingError = error;
 
-  float servoCommand = centerServo + steeringCorrection;
+  servoCommand = centerServo + steeringCorrection;
 
   servoCommand = constrain(servoCommand, minServo, maxServo);
 

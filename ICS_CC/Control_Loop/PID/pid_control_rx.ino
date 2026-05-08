@@ -9,12 +9,21 @@ float desiredPos_;
 float currentPos_;
 float desiredVel_;
 float currentVel_;
+float desiredHead_;
+float currentHead_;
+int servoCommand_;
+float steeringCorrection_;
 struct DataPacket {
   float desiredPos;
   float currentPos;
   float desiredVel;
   float currentVel;
+  float desiredHeading;
+  float currentHeading;
+  int servoCommand;
+  float steeringCorrection;
 };
+
 void setup() {
   Serial.begin(115200);
   delay(1000);
@@ -43,6 +52,10 @@ void loop() {
     currentPos_ = pkt.currentPos;
     currentVel_ = pkt.currentVel;
     desiredVel_ = pkt.desiredVel;
+    desiredHead_ = pkt.desiredHeading;
+    currentHead_ = pkt.currentHeading;
+    servoCommand_ = pkt.servoCommand;
+    steeringCorrection_ = pkt.steeringCorrection;
     // Print results
     Serial.print("Desired Position:");
     Serial.print(desiredPos_);
@@ -52,6 +65,14 @@ void loop() {
     Serial.println(desiredVel_);
     Serial.print(" | Current Velocity: ");
     Serial.println(currentVel_);
+    Serial.print(" | Desired Heading: ");
+    Serial.println(desiredHead_);
+    Serial.print(" | Current Heading: ");
+    Serial.println(currentHead_);
+    Serial.print(" | Servo Command: ");
+    Serial.println(servoCommand_);
+    Serial.print(" | Steering Correction: ");
+    Serial.println(steeringCorrection_);
   }
 
   //Serial.println("Not working");

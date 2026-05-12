@@ -20,6 +20,22 @@ Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28);
 RF24 path_radio(27, 29);          // CE, CSN
 const byte address2[6] = "00100"; // telemetry address
 
+// RF — joystick receiver
+RF24 radio(2, 3);
+const byte address[6] = "00001";
+
+// Must match transmitter packet exactly
+struct joy_stick_packet {
+  float x;
+  float y;
+  bool e_stop;
+};
+
+// RF emergency stop
+unsigned long lastRFTime = 0;
+const unsigned long rfTimeoutMs = 500;   // stop if no packet for 500 ms
+bool remoteEStop = false;
+
 struct DataPacket {
   float currentX;
   float currentY;
@@ -155,6 +171,30 @@ void scISRL() {
   pulseCountL++;
 }
 
+void emergencyStop() {
+  drivePWM(0);
+
+  desiredVelocity = 0.0;
+  filteredPWM = 0.0;
+
+  // Prevent PID windup while stopped
+  posIntegral = 0.0;
+  prevPosError = 0.0;
+  velIntegral = 0.0;
+  prevVelError = 0.0;
+  headingIntegral = 0.0;
+  prevHeadingError = 0.0;
+
+  // Center steering during stop
+  filteredServo = 90.0;
+  servoCommand = 90;
+  steeringServo.write(90);
+
+  static unsigned long lastStopPrint = 0;
+  if (millis() - lastStopPrint > 500) {;
+    lastStopPrint = millis();
+  }
+}
 // ===================== Send Telemetry =====================
 void sendTelemetry() {
   DataPacket pkt;
@@ -199,6 +239,12 @@ void setup() {
   }
   delay(1000);
 
+  SPI1.begin();
+  radio.begin(&SPI1);
+  radio.openReadingPipe(1, address);
+  radio.setPALevel(RF24_PA_MIN);
+  radio.startListening();
+
   SPI.begin();
   path_radio.begin(&SPI);
   path_radio.openWritingPipe(address2);
@@ -219,6 +265,7 @@ void setup() {
 
   lastControlTime = millis();
   lastTXTime = millis();
+  lastRFTime = millis();
 
   //Serial.println("Autonomous controller with NRF telemetry ready.");
   steeringServo.attach(servoPin);
@@ -281,13 +328,46 @@ void changePath() {
     Serial.println(desiredY);
   }
 }
+int xVal = 0;
+int yVal = 0;
+void unpackJoystickData(joy_stick_packet &jdata, int &joyX, int &joyY) {
+  joyX = (int)jdata.x;
+  joyY = (int)jdata.y;
+}
+
+bool joy_stick_controls() {
+  if (radio.available()) {
+    joy_stick_packet jdata;
+    radio.read(&jdata, sizeof(jdata));
+    unpackJoystickData(jdata, xVal, yVal);
+    lastRFTime = millis();
+    //send_path();
+    return true;
+  }
+  return false;
+}
 // ===================== Main Loop =====================
 void loop() {
   unsigned long now = millis();
+  joy_stick_controls();
+  // Always read RF first.
+  // This clears the RX buffer and updates lastRFTime if transmitter is alive.
+  //readEmergencyRadio();
+
+  // Emergency stop if transmitter button is pressed
+  if ((millis() - lastRFTime) >= 500) {
+    emergencyStop();
+    lastControlTime = millis();   // prevents dt jump when restarting
+    return;
+  }
+
+  // Normal autonomous control only runs if RF link is alive
   if (now - lastControlTime >= controlPeriodMs) {
     float dt = (now - lastControlTime) / 1000.0;
     lastControlTime = now;
-    currentHeading = getHeading();   // from BNO055    
+
+    currentHeading = getHeading();
+
     getDesiredPolar();
     updateVelocity(dt);
     updatePosition(dt);
@@ -295,6 +375,7 @@ void loop() {
     steeringPID(dt);
     sendTelemetry();
     changePath();
+
     //debugPrint();
   }
 }

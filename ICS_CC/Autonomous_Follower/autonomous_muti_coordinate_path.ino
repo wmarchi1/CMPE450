@@ -54,6 +54,8 @@ int mainMotor1 = 48;
 int mainMotor2 = 49;
 int mainMotor1Dir = 36;
 int mainMotor2Dir = 37;
+float pwm_left = 0.0f;
+float pwm_right = 0.0f;
 
 // ===================== Encoder Pins =====================
 const int scPinR = 6;
@@ -77,13 +79,13 @@ const unsigned long txPeriodMs = 100;       // 10 Hz NRF transmit
 // ===================== Desired Values =====================
 float desiredPosition = 0.0;   // meters
 float desiredVelocity = 0.0;   // m/s
-float desiredX = 10.0;
-float desiredY = 10.0;
+float desiredX = 0;
+float desiredY = 0;
 float oldDesiredX = 0.0;
 float oldDesiredY = 0.0;
 
-float pathX[] = {10.0, 15.0, 20.0};
-float pathY[] = {0.0, -10.0, -10.0};
+float pathX[] = {20.0};//, 15.0, 20.0};
+float pathY[] = {0.0};//, -10.0, -10.0};
 
 const int numPoints = sizeof(pathX) / sizeof(pathX[0]);
 int pathCount = 0;
@@ -98,24 +100,24 @@ float currentX  = 0.0;
 float currentY  = 0.0;
 
 // // ===================== Position PID Gains =====================
-// float Kp_pos = 0.303590652764242;
-// float Ki_pos = 0.00785471546955669;
-// float Kd_pos = -0.226708053140647;
+float Kp_pos = 0.47639159476101;
+float Ki_pos = 0.00326960229075012;
+float Kd_pos = 2;
 
 // // ===================== Velocity PID Gains =====================
-// float Kp_vel = 0.00338220968519202;
-// float Ki_vel = 0.00565088947672849;
-// float Kd_vel = 0;
+float Kp_vel = 0;
+float Ki_vel = 65.256384084022102;
+float Kd_vel = 0;
 
 // ===================== Position PID Gains =====================
-float Kp_pos = 1.81493632280259;
-float Ki_pos = 0.23534906486077;
-float Kd_pos = 2.18688527899715;
+//float Kp_pos = 1.81493632280259;
+//float Ki_pos = 0.23534906486077;
+//float Kd_pos = 2.18688527899715;
 
 // ===================== Velocity PID Gains =====================
-float Kp_vel = 0.707021748901557;
-float Ki_vel = 0.431770610575882;
-float Kd_vel = -0.437408677228963;
+//float Kp_vel = 0.707021748901557;
+//float Ki_vel = 0.431770610575882;
+//float Kd_vel = -0.437408677228963;
 
 // ===================== PID Memory =====================
 float posIntegral = 0.0;
@@ -269,9 +271,13 @@ void setup() {
 
   //Serial.println("Autonomous controller with NRF telemetry ready.");
   steeringServo.attach(servoPin);
+  // Center steering during stop
+  filteredServo = 90.0;
+  servoCommand = 90;
   steeringServo.write(90);
   desiredX = pathX[0];
   desiredY = pathY[0];
+  delay(1000);
   //segmentStartPosition = currentPosition;
 }
 void getDesiredPolar() {
@@ -472,7 +478,7 @@ void updatePosition(float dt) {
 }
 
 float angleError(float target, float current) {
-  float error = target - current;
+  float error = -target + current;
 
   while (error > 180.0) error -= 360.0;
   while (error < -180.0) error += 360.0;
@@ -513,6 +519,7 @@ void steeringPID(float dt) {
 
 // ===================== Autonomous Cascade Control =====================
 void autonomousControl(float dt) {
+
   float posError = desiredPosition - currentPosition;
 
   posIntegral += posError * dt;
@@ -552,20 +559,32 @@ void autonomousControl(float dt) {
   drivePWM(filteredPWM);
 }
 
+
 // ===================== Drive Motors =====================
 void drivePWM(float pwmCommand) {
-  int pwm = abs((int)pwmCommand);
+  //differential drive
+  const float wheelBaseFactor = 1.515f;
+  const float offsetFactor    = 0.1875f;
+  float theta_rad = servoCommand * PI / 180.0f;
+  float turnFactor = tan(theta_rad - (PI/2));
+  pwm_left  = pwmCommand * (1.0f + ((turnFactor * offsetFactor) / (wheelBaseFactor)));
+  pwm_right = pwmCommand * (1.0f - ((turnFactor * offsetFactor) / (wheelBaseFactor)));
+
+  pwm_left = abs((int)pwm_left);
+  pwm_right = abs((int)pwm_right);
+
+
 
   if (pwmCommand >= 0) {
-    digitalWrite(mainMotor1Dir, HIGH);
-    digitalWrite(mainMotor2Dir, LOW);
-  } else {
     digitalWrite(mainMotor1Dir, LOW);
     digitalWrite(mainMotor2Dir, HIGH);
+  } else {
+    digitalWrite(mainMotor1Dir, HIGH);
+    digitalWrite(mainMotor2Dir, LOW);
   }
 
-  analogWrite(mainMotor1, pwm);
-  analogWrite(mainMotor2, pwm);
+  analogWrite(mainMotor1, pwm_left);
+  analogWrite(mainMotor2, pwm_right);
 }
 
 // ===================== Debug =====================

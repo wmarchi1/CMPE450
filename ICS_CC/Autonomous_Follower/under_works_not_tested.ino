@@ -301,11 +301,7 @@ void getDesiredPolar() {
   if (desiredHeading < 0) {
     desiredHeading -= 360.0;
   }
-  if (desiredHeading <= 180) {
-    desiredHeading == -(desiredHeading - 90.0);
-  } else {
-    desiredHeading == -(desiredHeading - 450);
-  }
+  desiredHeading = -(desiredHeading - 90.0);
   if (desiredHeading < 0) {
     desiredHeading += 360.0;
   }

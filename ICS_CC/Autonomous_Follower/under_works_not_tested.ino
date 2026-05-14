@@ -42,11 +42,11 @@ struct DataPacket {
   float desiredPos;
   float currentPos;
   //float desiredVel;
-  float currentVel;
+  //float currentVel;
   float desiredHeading;
   float currentHeading;
-  int servoCommand;
-  float steeringCorrection;
+  //int servoCommand;
+  //float steeringCorrection;
 };
 
 // ===================== Motor Pins =====================
@@ -77,7 +77,7 @@ unsigned long lastTXTime = 0;
 const unsigned long txPeriodMs = 100;       // 10 Hz NRF transmit
 
 // ===================== Desired Values =====================
-float desiredPosition = 0.0;   // meters
+float desiredPosition = 1.0;   // meters
 float desiredVelocity = 0.5;   // m/s
 float desiredX = 0;
 float desiredY = 0;
@@ -86,7 +86,7 @@ float oldDesiredY = 0.0;
 
 float pathX[] = {2.0, 4.0, 6.0, 8.0};//, 15.0, 20.0};
 float pathY[] = {2.0, 0, 2.0, 0.0};//, -10.0, -10.0};
-float pathVel[] = {0.5, 0.5, 0.5, 0};
+float pathVel[] = {0.25, 0.25, 0.25, 0};
 
 float adjustedDesiredVelocity = 0.0;
 const int numPoints = sizeof(pathX) / sizeof(pathX[0]);
@@ -124,7 +124,7 @@ float Kd_vel = 0;
 
 // ===================== PID Memory =====================
 float posIntegral = 0.0;
-float prevPosError = 0.0;
+float prevCurrentPosition = 0.0;
 
 float velIntegral = 0.0;
 float prevVelError = 0.0;
@@ -184,7 +184,7 @@ void emergencyStop() {
 
   // Prevent PID windup while stopped
   posIntegral = 0.0;
-  prevPosError = 0.0;
+  prevCurrentPosition = 0.0;
   velIntegral = 0.0;
   prevVelError = 0.0;
   headingIntegral = 0.0;
@@ -208,11 +208,11 @@ void sendTelemetry() {
   pkt.desiredPos = desiredPosition;
   pkt.currentPos = currentPosition;
   //pkt.desiredVel = desiredVelocity;
-  pkt.currentVel = rawServo;
+  //pkt.currentVel = rawServo;
   pkt.desiredHeading = desiredHeading;
   pkt.currentHeading = currentHeading;
-  pkt.servoCommand = servoCommand;
-  pkt.steeringCorrection = steeringCorrection;
+  //pkt.servoCommand = servoCommand;
+  //pkt.steeringCorrection = steeringCorrection;
 
 
   bool success = path_radio.write(&pkt, sizeof(pkt));
@@ -326,12 +326,12 @@ void changePath() {
 
     // Reset PID memories when changing target
     posIntegral = 0.0;
-    prevPosError = 0.0;
+    prevCurrentPosition = 0.0;
     velIntegral = 0.0;
     prevVelError = 0.0;
     headingIntegral = 0.0;
     prevHeadingError = 0.0;
-    desiredPosition = 0.0;
+    desiredPosition = 1.0;
     currentPosition = 0.0;
 
     Serial.print("New target X: ");
@@ -379,14 +379,13 @@ void loop() {
     lastControlTime = now;
 
     currentHeading = getHeading();
-
+    changePath();
     getDesiredPolar();
     updateVelocity(dt);
     updatePosition(dt);
     autonomousControl(dt);
     steeringPID(dt);
     sendTelemetry();
-    changePath();
 
     //debugPrint();
   }
@@ -531,7 +530,7 @@ void autonomousControl(float dt) {
   float posError = desiredPosition - currentPosition;
 
   posIntegral += posError * dt;
-  float posDerivative = (currentPosition - prevPosError) / dt;
+  float posDerivative = (currentPosition - prevCurrentPosition) / dt;
 
   float velocityCommand =
       Kp_pos * posError
@@ -540,7 +539,7 @@ void autonomousControl(float dt) {
   // if (velocityCommand <= 0) {
   //   velocityCommand = 0;
   // }
-  prevPosError = posError;
+  prevCurrentPosition = currentPosition;
 
   //desiredVelocity = constrain(
   //  desiredVelocity,
@@ -613,4 +612,3 @@ void debugPrint() {
   Serial.print(" | Current Velocity: ");
   Serial.println(currentVelocity);
 }
-

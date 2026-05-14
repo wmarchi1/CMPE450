@@ -299,12 +299,12 @@ void getDesiredPolar() {
 
   //desiredHeading = atan2(dx, dy) * 180.0 / PI;
   if (desiredHeading < 0) {
-    desiredHeading += 360.0;
+    desiredHeading -= 360.0;
   }
   if (desiredHeading <= 180) {
-    desiredHeading += 90.0;
+    desiredHeading == -(desiredHeading - 90.0);
   } else {
-    desiredHeading -= 270.0;
+    desiredHeading == -(desiredHeading - 450);
   }
   if (desiredHeading < 0) {
     desiredHeading += 360.0;

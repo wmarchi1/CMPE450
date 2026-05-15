@@ -18,6 +18,7 @@ float currentY_;
 float velocityCommand_;
 float pwmCommand_;
 float filteredPWM_;
+float heading_;
 struct DataPacket {
   float currentX;
   float currentY;
@@ -31,7 +32,7 @@ struct DataPacket {
   //float steeringCorrection;
   float velocityCommand;
   float pwmCommand;
-  float filteredPWM;
+  float heading;
 };
 
 
@@ -72,7 +73,7 @@ void loop() {
     currentY_ = pkt.currentY;
     velocityCommand_ = pkt.velocityCommand;
     pwmCommand_ = pkt.pwmCommand;
-    filteredPWM_ = pkt.filteredPWM;
+    heading_ = pkt.heading;
 
     // Print results
     // Serial.print("Desired Position:");
@@ -104,7 +105,7 @@ void loop() {
     Serial.print(",");
     Serial.print(pwmCommand_);
     Serial.print(",");
-    Serial.println(filteredPWM_);
+    Serial.println(heading_);
 
   }
 

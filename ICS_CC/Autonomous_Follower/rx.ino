@@ -8,25 +8,32 @@ const byte address[6] = "00100";
 float desiredPos_;
 float currentPos_;
 //float desiredVel_;
-//float currentVel_;
+float currentVel_;
 float desiredHead_;
 float currentHead_;
 //int servoCommand_;
 //float steeringCorrection_;
 float currentX_;
 float currentY_;
+float velocityCommand_;
+float pwmCommand_;
+float filteredPWM_;
 struct DataPacket {
   float currentX;
   float currentY;
   float desiredPos;
-  float currentPos;
+  //float currentPos;
   //float desiredVel;
-//  float currentVel;
-  float desiredHeading;
-  float currentHeading;
-//  int servoCommand;
-//  float steeringCorrection;
+  float currentVel;
+  //float desiredHeading;
+  //float currentHeading;
+  //int servoCommand;
+  //float steeringCorrection;
+  float velocityCommand;
+  float pwmCommand;
+  float filteredPWM;
 };
+
 
 
 void setup() {
@@ -54,15 +61,18 @@ void loop() {
     DataPacket pkt;
     radio.read(&pkt, sizeof(pkt));
     desiredPos_ = pkt.desiredPos;
-    currentPos_ = pkt.currentPos;
-  //  currentVel_ = pkt.currentVel;
+    //currentPos_ = pkt.currentPos;
+    currentVel_ = pkt.currentVel;
     //desiredVel_ = pkt.desiredVel;
-    desiredHead_ = pkt.desiredHeading;
-    currentHead_ = pkt.currentHeading;
+  //  desiredHead_ = pkt.desiredHeading;
+  //  currentHead_ = pkt.currentHeading;
   //  servoCommand_ = pkt.servoCommand;
   //  steeringCorrection_ = pkt.steeringCorrection;
     currentX_ = pkt.currentX;
     currentY_ = pkt.currentY;
+    velocityCommand_ = pkt.velocityCommand;
+    pwmCommand_ = pkt.pwmCommand;
+    filteredPWM_ = pkt.filteredPWM;
 
     // Print results
     // Serial.print("Desired Position:");
@@ -82,7 +92,7 @@ void loop() {
     // Serial.print(" | Steering Correction: ");
     // Serial.println(steeringCorrection_);
 
-    Serial.print(currentPos_);
+    Serial.print(currentVel_);
     Serial.print(",");
     Serial.print(desiredPos_);
     Serial.print(",");
@@ -90,9 +100,12 @@ void loop() {
     Serial.print(",");
     Serial.print(currentY_);
     Serial.print(",");
-    Serial.print(desiredHead_);
+    Serial.print(velocityCommand_);
     Serial.print(",");
-    Serial.println(currentHead_);
+    Serial.print(pwmCommand_);
+    Serial.print(",");
+    Serial.println(filteredPWM_);
+
   }
 
   //Serial.println("Not working");

@@ -102,15 +102,25 @@ float currentX  = 0.0;
 float currentY  = 0.0;
 
 // // ===================== Position PID Gains =====================
-float Kp_pos = 0.47639159476101;
-float Ki_pos = 0.00326960229075012;
-float Kd_pos = 2;
+float Kp_pos = 0.270495557544331;
+float Ki_pos = 0.0126024625302669;
+float Kd_pos = 0.387212887171821;
 
 // // ===================== Velocity PID Gains =====================
-float Kp_vel = 0;
-// float Ki_vel = 65.256384084022102;
-float Ki_vel = 40;
+float Kp_vel = 19.6232429592983;
+float Ki_vel = 70.9400238823325;
 float Kd_vel = 0;
+
+// // // ===================== Position PID Gains =====================
+// float Kp_pos = 0.47639159476101;
+// float Ki_pos = 0.00326960229075012;
+// float Kd_pos = 2;
+
+// // // ===================== Velocity PID Gains =====================
+// float Kp_vel = 0;
+// // float Ki_vel = 65.256384084022102;
+// float Ki_vel = 40;
+// float Kd_vel = 0;
 
 // ===================== Position PID Gains =====================
 //float Kp_pos = 1.81493632280259;

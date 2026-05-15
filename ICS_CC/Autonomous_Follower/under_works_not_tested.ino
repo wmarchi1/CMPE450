@@ -508,9 +508,9 @@ void steeringPID(float dt) {
   prevHeadingError = error;
 
   // Raw steering command
-  float safeVelocity = max(currentVelocity, 0.05);
+  // float safeVelocity = max(currentVelocity, 0.05);
 
-  rawServo =  centerServo + atan2(steeringCorrection * 0.515 * PI, 180.0 * safeVelocity) * 180.0 / PI;
+  rawServo =  centerServo + atan2(steeringCorrection * 0.515 * PI, 180.0 * currentVelocity) * 180.0 / PI;
 
 // Limit servo range
   float constrainServo = constrain(rawServo, minServo, maxServo);

@@ -90,6 +90,7 @@ float oldDesiredY = 0.0;
 float pathX[] = {2.0, 4.0, 6.0, 8.0};//, 15.0, 20.0};
 float pathY[] = {0.0, 2.0, 0.0, 2.0};//, -10.0, -10.0};
 float pathVel[] = {0.1, 0.1, 0.1, 0};
+float pathTheta[] = {0, 0, 0, 0};
 
 float adjustedDesiredVelocity = 0.0;
 const int numPoints = sizeof(pathX) / sizeof(pathX[0]);
@@ -304,28 +305,39 @@ void setup() {
   delay(1000);
   //segmentStartPosition = currentPosition;
 }
-void getDesiredPolar() {
+void getDesiredPolar(int pathCount, float pathTheta[]) {
   float dx = desiredX - currentX;
   float dy = desiredY - currentY;
 
   desiredPosition = sqrt((dx * dx) + (dy * dy));
   //float safeDesiredX = max(dx, 0.01);
   //float safeDesiredY = max(dy, 0.01);
-  desiredHeading =  atan2(dx, dy) * (180/PI);
+  float headingDirection =  atan2(dx, dy) * (180/PI);
   //float distanceToTarget = sqrt(dx * dx + dy * dy);
-
+  float checkpointHeading = pathTheta[pathCount];
   // Since currentPosition is cumulative distance traveled,
   // desiredPosition should also be cumulative.
   //desiredPosition = segmentStartPosition + distanceToTarget;
 
   //desiredHeading = atan2(dx, dy) * 180.0 / PI;
+  if (headingDirection < 0) {
+    headingDirection += 360.0;
+  }
+  headingDirection = -(headingDirection - 90.0);
+  if (headingDirection < 0) {
+    headingDirection += 360.0;
+  }
+  headingDirection = headingDirection * PI/180; // convert back to radians
+  checkpointHeading = checkpointHeading * PI/180; // convert to radians
+  float weightDirection = max((desiredPosition-0.8)*10, 0);
+  float weightCheckpoint = 1/(desiredPosition + 0.1);
+  float xM = cos(headingDirection)*weightDirection + cos(checkpointHeading)*weightCheckpoint;
+  float yM = sin(headingDirection)*weightDirection + sin(checkpointHeading)*weightCheckpoint;
+  desiredHeading = atan2(yM, xM) * 180.0 / PI;
   if (desiredHeading < 0) {
     desiredHeading += 360.0;
   }
-  desiredHeading = -(desiredHeading - 90.0);
-  if (desiredHeading < 0) {
-    desiredHeading += 360.0;
-  }
+
 }
 void changePath() {
 
@@ -400,7 +412,7 @@ void loop() {
     lastControlTime = now;
 
     currentHeading = getHeading();
-    getDesiredPolar();
+    getDesiredPolar(pathCount, pathTheta);
     updateVelocity(dt);
     updatePosition(dt);
     autonomousControl(dt);
@@ -442,7 +454,7 @@ float getHeading() {
   if (diff < -MAX_STEP) diff = -MAX_STEP;
 
   // Low-pass filter
-  const float ALPHA = 0.2f;
+  const float ALPHA = 1.0f;
   heading_smooth += diff * ALPHA;
 
   // Wrap again

@@ -40,13 +40,16 @@ struct DataPacket {
   float currentX;
   float currentY;
   float desiredPos;
-  float currentPos;
+  //float currentPos;
   //float desiredVel;
   float currentVel;
-  float desiredHeading;
+  //float desiredHeading;
   float currentHeading;
-  int servoCommand;
-  float steeringCorrection;
+  //int servoCommand;
+  //float steeringCorrection;
+  float velocityCommand;
+  //float pwmCommand;
+  float filteredPWM;
 };
 
 // ===================== Motor Pins =====================
@@ -78,19 +81,21 @@ const unsigned long txPeriodMs = 100;       // 10 Hz NRF transmit
 
 // ===================== Desired Values =====================
 float desiredPosition = 0.0;   // meters
-float desiredVelocity = 0.0;   // m/s
+float desiredVelocity = 0.5;   // m/s
 float desiredX = 0;
 float desiredY = 0;
 float oldDesiredX = 0.0;
 float oldDesiredY = 0.0;
 
-float pathX[] = {20.0};//, 15.0, 20.0};
-float pathY[] = {0.0};//, -10.0, -10.0};
+float pathX[] = {2.0, 4.0, 6.0, 8.0};//, 15.0, 20.0};
+float pathY[] = {0.0, 2.0, 0.0, 2.0};//, -10.0, -10.0};
+float pathVel[] = {0.1, 0.1, 0.1, 0};
 
+float adjustedDesiredVelocity = 0.0;
 const int numPoints = sizeof(pathX) / sizeof(pathX[0]);
 int pathCount = 0;
 
-float destinationTolerance = 0.5;   // meters
+float destinationTolerance = 0.7;   // meters
 float segmentStartPosition = 0.0;
 
 // ===================== Measured Values =====================
@@ -100,14 +105,25 @@ float currentX  = 0.0;
 float currentY  = 0.0;
 
 // // ===================== Position PID Gains =====================
-float Kp_pos = 0.47639159476101;
-float Ki_pos = 0.00326960229075012;
-float Kd_pos = 2;
+float Kp_pos = 0.270495557544331;
+float Ki_pos = 0.0126024625302669;
+float Kd_pos = 0.387212887171821;
 
 // // ===================== Velocity PID Gains =====================
-float Kp_vel = 0;
-float Ki_vel = 65.256384084022102;
+float Kp_vel = 19.6232429592983;
+float Ki_vel = 70.9400238823325;
 float Kd_vel = 0;
+
+// // // ===================== Position PID Gains =====================
+// float Kp_pos = 0.47639159476101;
+// float Ki_pos = 0.00326960229075012;
+// float Kd_pos = 2;
+
+// // // ===================== Velocity PID Gains =====================
+// float Kp_vel = 0;
+// // float Ki_vel = 65.256384084022102;
+// float Ki_vel = 40;
+// float Kd_vel = 0;
 
 // ===================== Position PID Gains =====================
 //float Kp_pos = 1.81493632280259;
@@ -128,7 +144,9 @@ float prevVelError = 0.0;
 
 // ===================== Limits =====================
 float maxVelocityCommand = 2.0;   // m/s
-int maxPWM = 130;
+int maxPWM = 80;
+
+float velocityCommand = 0.0;
 
 // ===================== Servo Steering =====================
 Servo steeringServo;
@@ -140,9 +158,9 @@ const int servoPin = 9;
 float desiredHeading = 0.0;     // degrees
 float currentHeading = 0.0;     // from IMU
 
-float Kp_heading = 3;
+float Kp_heading = 0.5;
 float Ki_heading = 0;
-float Kd_heading = 0;
+float Kd_heading = 0.0;
 
 float headingIntegral = 0.0;
 float prevHeadingError = 0.0;
@@ -156,13 +174,15 @@ float rawServo = 0.0;
 
 // PWM filter
 float filteredPWM = 0.0;
-const float pwmAlpha = 0.15;   
+const float pwmAlpha = 0.75;   
 // smaller = smoother
 // typical: 0.05 to 0.3
 
 // Servo filter
 float filteredServo = 0.0;
-const float servoAlpha = 0.12;
+const float servoAlpha = 1.0;
+
+float pwmCommand = 0.0;
 
 // ===================== Interrupts =====================
 void scISRR() {
@@ -203,13 +223,17 @@ void sendTelemetry() {
   pkt.currentX = currentX;
   pkt.currentY = currentY;
   pkt.desiredPos = desiredPosition;
-  pkt.currentPos = currentPosition;
+  //pkt.currentPos = currentPosition;
   //pkt.desiredVel = desiredVelocity;
-  pkt.currentVel = rawServo;
-  pkt.desiredHeading = desiredHeading;
+  pkt.currentVel = currentVelocity;
+  //pkt.desiredHeading = desiredHeading;
   pkt.currentHeading = currentHeading;
-  pkt.servoCommand = servoCommand;
-  pkt.steeringCorrection = steeringCorrection;
+  //pkt.servoCommand = servoCommand;
+  //pkt.steeringCorrection = steeringCorrection;
+
+  pkt.velocityCommand = velocityCommand;
+  //-pkt.pwmCommand = pwmCommand;
+  pkt.filteredPWM = filteredPWM;
 
 
   bool success = path_radio.write(&pkt, sizeof(pkt));
@@ -281,14 +305,13 @@ void setup() {
   //segmentStartPosition = currentPosition;
 }
 void getDesiredPolar() {
-  float dx = desiredX - oldDesiredX;
-  float dy = desiredY - oldDesiredY;
+  float dx = desiredX - currentX;
+  float dy = desiredY - currentY;
 
   desiredPosition = sqrt((dx * dx) + (dy * dy));
-  float safeDesiredX = max(dx, 0.01);
+  //float safeDesiredX = max(dx, 0.01);
   //float safeDesiredY = max(dy, 0.01);
-  desiredHeading =  atan2(dy, safeDesiredX) * (180/PI);
-
+  desiredHeading =  atan2(dx, dy) * (180/PI);
   //float distanceToTarget = sqrt(dx * dx + dy * dy);
 
   // Since currentPosition is cumulative distance traveled,
@@ -299,10 +322,14 @@ void getDesiredPolar() {
   if (desiredHeading < 0) {
     desiredHeading += 360.0;
   }
+  desiredHeading = -(desiredHeading - 90.0);
+  if (desiredHeading < 0) {
+    desiredHeading += 360.0;
+  }
 }
 void changePath() {
 
-  if ((desiredPosition - currentPosition) <= destinationTolerance) {
+  if ((desiredPosition) <= destinationTolerance) {
     pathCount++;
 
     if (pathCount >= numPoints) {
@@ -315,7 +342,7 @@ void changePath() {
     oldDesiredY = desiredY;
     desiredX = pathX[pathCount];
     desiredY = pathY[pathCount];
-
+    desiredVelocity = pathVel[pathCount];
     //segmentStartPosition = currentPosition;
 
     // Reset PID memories when changing target
@@ -373,7 +400,6 @@ void loop() {
     lastControlTime = now;
 
     currentHeading = getHeading();
-
     getDesiredPolar();
     updateVelocity(dt);
     updatePosition(dt);
@@ -443,7 +469,7 @@ void updateVelocity(float dt) {
   float revolutions = avgPulses / pulsesPerRevolution;
   float distance = revolutions * wheelCircumference;
 
-  currentVelocity = distance / dt;
+  currentVelocity = (distance / dt) * (1.246);
 }
 
 // ===================== Update Position =====================
@@ -478,6 +504,8 @@ void updatePosition(float dt) {
 }
 
 float angleError(float target, float current) {
+  if (target - 90 < 0)
+    target += 360;
   float error = -target + current;
 
   while (error > 180.0) error -= 360.0;
@@ -501,9 +529,9 @@ void steeringPID(float dt) {
   prevHeadingError = error;
 
   // Raw steering command
-  float safeVelocity = max(currentVelocity, 0.05);
+  // float safeVelocity = max(currentVelocity, 0.05);
 
-  rawServo =  centerServo + atan2(steeringCorrection * 0.515 * PI, 180.0 * safeVelocity) * 180.0 / PI;
+  rawServo =  centerServo + atan2(steeringCorrection * 0.515 * PI, 180.0 * currentVelocity) * 180.0 / PI;
 
 // Limit servo range
   float constrainServo = constrain(rawServo, minServo, maxServo);
@@ -518,19 +546,21 @@ void steeringPID(float dt) {
 }
 
 // ===================== Autonomous Cascade Control =====================
+// ===================== Autonomous Cascade Control =====================
 void autonomousControl(float dt) {
 
-  float posError = desiredPosition - currentPosition;
+  float temp_posError = desiredPosition;
 
+  float posError = pwmAlpha * temp_posError + (1.0 - pwmAlpha) * temp_posError;
   posIntegral += posError * dt;
   float posDerivative = (currentPosition - prevPosError) / dt;
 
-  float velocityCommand =
+  velocityCommand =
       Kp_pos * posError
     + Ki_pos * posIntegral
     - Kd_pos * posDerivative;
 
-  prevPosError = posError;
+  prevPosError = currentPosition;
 
   //desiredVelocity = constrain(
   //  desiredVelocity,
@@ -538,12 +568,13 @@ void autonomousControl(float dt) {
   //  maxVelocityCommand
   //);
 
-  float velError = desiredVelocity + velocityCommand - currentVelocity;
+  float temp_velError = desiredVelocity + velocityCommand - currentVelocity;
+  float velError = pwmAlpha * temp_velError + (1.0 - pwmAlpha) * temp_velError;
 
   velIntegral += velError * dt;
   float velDerivative = (velError - prevVelError) / dt;
 
-  float pwmCommand =
+  pwmCommand =
       Kp_vel * velError
     + Ki_vel * velIntegral
     + Kd_vel * velDerivative;
@@ -558,7 +589,6 @@ void autonomousControl(float dt) {
 
   drivePWM(filteredPWM);
 }
-
 
 // ===================== Drive Motors =====================
 void drivePWM(float pwmCommand) {

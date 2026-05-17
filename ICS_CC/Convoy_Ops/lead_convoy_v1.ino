@@ -4,10 +4,6 @@
  * DataPacket matches path_reciever.ino
  */
 
-/*
-Currently not working perfectly. X position not being sent
-*/
-
 #include <SPI.h>
 #include <nRF24L01.h>
 #include <RF24.h>
@@ -129,11 +125,11 @@ struct DataPacket {
 };
 
 struct DataPacket2 {
-  bool e_stop;
   float   x;
   float   y;
   float   heading;
   float   speed;
+  bool e_stop;
 };
 
 struct joy_stick_packet {

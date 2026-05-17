@@ -483,10 +483,13 @@ void loop() {
     //   return;
     // }
     getDesiredPolar();
+    
     updateVelocity(dt);
     updatePosition(dt);
-    autonomousControl(dt);
-    steeringPID(dt);
+    if (desiredPosition < = 2) {
+      autonomousControl(dt);
+      steeringPID(dt);
+    }
     sendTelemetry();
     changePath();
     //debugPrint();

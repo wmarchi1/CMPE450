@@ -163,6 +163,7 @@ if __name__ == "__main__":
             
             if 1 in sensorFlags:
                 currPos, nextPos = client.get_macro_path()
+                client.algorithm(self, currPos, nextPos, sensorFlags)
                 
             
             print("PATH:", path if path else "no data")

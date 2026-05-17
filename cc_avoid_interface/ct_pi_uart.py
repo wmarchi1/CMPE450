@@ -1,28 +1,36 @@
 import serial
 import time
 
+
 class ArduinoPathClient:
-    def __init__(self, port='/dev/ttyACM0', baudrate=115200, timeout=0.6, startup_delay=2):
+    def __init__(self, port="/dev/ttyACM0", baudrate=115200, timeout=0.6, startup_delay=2):
         self.TIME_OUT = timeout
         self.ser = serial.Serial(port, baudrate, timeout=self.TIME_OUT)
         time.sleep(startup_delay)
         self.ser.reset_input_buffer()
 
-   def parse_coord(self, line):
+    def parse_coord(self, line):
         # Parse "(x, y, speed, heading)"
         try:
+            line = line.strip()
+
+            if not line.startswith("(") or not line.endswith(")"):
+                return None
+
             values = line[1:-1].split(",")
 
-            x = float(values[0])
-            y = float(values[1])
-            speed = float(values[2])
-            heading = float(values[3])
+            if len(values) != 4:
+                return None
+
+            x = float(values[0].strip())
+            y = float(values[1].strip())
+            speed = float(values[2].strip())
+            heading = float(values[3].strip())
 
             return (x, y, speed, heading)
 
         except Exception:
             return None
-
 
     def get_macro_path(self):
         self.ser.write(b"Start\n")
@@ -34,7 +42,7 @@ class ArduinoPathClient:
             if time.time() - start > self.TIME_OUT:
                 break
 
-            line = self.ser.readline().decode("utf-8").strip()
+            line = self.ser.readline().decode("utf-8", errors="ignore").strip()
 
             if line == "END":
                 break
@@ -46,7 +54,6 @@ class ArduinoPathClient:
 
         return path
 
-
     def send_micro_path(self, micro_path):
         # Send generated micro path to GIGA
         self.ser.write(b"Ready\n")
@@ -57,7 +64,7 @@ class ArduinoPathClient:
             if time.time() - start > self.TIME_OUT:
                 return False
 
-            line = self.ser.readline().decode("utf-8").strip()
+            line = self.ser.readline().decode("utf-8", errors="ignore").strip()
 
             if line == "Initiate":
                 data = str(len(micro_path)) + "\n"
@@ -70,7 +77,6 @@ class ArduinoPathClient:
 
             elif line == "Incomplete":
                 return False
-
 
     def close(self):
         if self.ser and self.ser.is_open:
@@ -105,7 +111,6 @@ def find_merge_goal(current, macro_path):
 
     for point in macro_path:
         x, y, _, _ = point
-
         dist = abs(x - cx) + abs(y - cy)
 
         if dist < best_dist:

@@ -19,7 +19,7 @@ const byte joy_address[6] = "00001";
 // RF — path transmitter (leader-follow)
 RF24 path_radio(27, 29);
 const byte path_address[6] = "00100";
-unsigned long TRANS_INT = 1000;
+unsigned long TRANS_INT = 50;
 // unsigned long HOLD_TIME = 100;
 // bool SENDING = false;
 unsigned long lastTransTime = 0;
@@ -160,18 +160,18 @@ void send_path() {
   // pkt.accel_enc = accel_enc;
   // pkt.accel_imu = accel_imu;
   // pkt.slipping  = is_slipping ? 1 : 0;
-  DataPacket2 pkt;
+  DataPacket2 pkt2;
   // Serial.println("Entering Send path function");
 
   if (E_STOP) {
 
-    pkt.e_stop = true;
-    pkt.speed = -111;
-    pkt.heading = -111;
-    pkt.x = -111;
-    pkt.y = -111;
+    pkt2.e_stop = true;
+    // pkt2.speed = 0;
+    // pkt2.heading = 0;
+    // pkt2.x = 0;
+    // pkt2.y = 0;
 
-    path_radio.write(&pkt, sizeof(pkt));
+    path_radio.write(&pkt2, sizeof(pkt2));
     return;
   }
   if (millis()-lastTransTime < TRANS_INT)
@@ -179,19 +179,19 @@ void send_path() {
     
   lastTransTime = millis();
   
-  pkt.x = pos_x;
-  pkt.y = pos_y;
-  pkt.heading = vehicle_heading;
-  pkt.speed = avgVel;
+  pkt2.x = pos_x;
+  pkt2.y = pos_y;
+  pkt2.heading = vehicle_heading;
+  pkt2.speed = avgVel;
 
   // Serial.println("Sending!");
-  if (!path_radio.write(&pkt, sizeof(pkt))) {
+  if (!path_radio.write(&pkt2, sizeof(pkt2))) {
     Serial.println("TX FAIL");
   } else {
-    Serial.print("TX OK | X: ");  Serial.print(pkt.x, 2);
-    Serial.print(" Y: ");         Serial.print(pkt.y, 2);
-    Serial.print(" H: ");         Serial.print(pkt.heading, 1);
-    Serial.println(" V: ");         Serial.print(pkt.speed, 2);
+    Serial.print("TX OK | X: ");  Serial.print(pkt2.x, 2);
+    Serial.print(" Y: ");         Serial.print(pkt2.y, 2);
+    Serial.print(" H: ");         Serial.print(pkt2.heading, 1);
+    Serial.println(" V: ");         Serial.print(pkt2.speed, 2);
     // Serial.print(" VI: ");        Serial.print(pkt.vel_imu, 2);
     // Serial.print(" A_enc: ");     Serial.print(pkt.accel_enc, 2);
     // Serial.print(" A_imu: ");     Serial.print(pkt.accel_imu, 2);
@@ -483,7 +483,7 @@ void loop() {
   if ((millis() - lastRFTime) >= 500) {
     xVal = 512;
     yVal = 512;
-    E_STOP = true;
+   E_STOP = true;
   } else {
     E_STOP = false;
   }
@@ -491,7 +491,7 @@ void loop() {
   // set_control_params runs AFTER joy_stick_controls so it uses the freshest xVal/yVal.
   set_control_params();
   drive();
-  send_path();
+  //send_path();
 
   // Encoder RPM sampling at 200 ms intervals.
   // update_position and updateImuVelocity run here so they always use fresh avgRpm.

@@ -19,7 +19,7 @@ const byte joy_address[6] = "00001";
 // RF — path transmitter (leader-follow)
 RF24 path_radio(27, 29);
 const byte path_address[6] = "00100";
-unsigned long TRANS_INT = 50;
+unsigned long TRANS_INT = 33.333333333;
 // unsigned long HOLD_TIME = 100;
 // bool SENDING = false;
 unsigned long lastTransTime = 0;
@@ -38,110 +38,114 @@ float pos_x = 0.0f;
 float pos_y = 0.0f;
 
 // Control state
-int   theta      = 90;
-int   theta_old  = 90;
-int   servoAngle = 90;
-float velocity   = 0.0f;
+int theta = 90;
+int theta_old = 90;
+int servoAngle = 90;
+float velocity = 0.0f;
 float vehicle_heading = 0.0f;
 
 // Motor pins
-const int mainMotor1     = 48;
-const int mainMotor2     = 49;
-const int mainMotor1Dir  = 36;
-const int mainMotor2Dir  = 37;
+const int mainMotor1 = 48;
+const int mainMotor2 = 49;
+const int mainMotor1Dir = 36;
+const int mainMotor2Dir = 37;
 const int mainMotor1Stop = 33;
 const int mainMotor2Stop = 32;
 
-int   pwmMotor1   = 0;
-int   pwmMotor2   = 0;
-float r_RPM_left  = 0.0f;
+int pwmMotor1 = 0;
+int pwmMotor2 = 0;
+float r_RPM_left = 0.0f;
 float r_RPM_right = 0.0f;
-float avgRpm      = 0.0f;
-float avgVel      = 0.0f;
-bool  dir1 = false;
-bool  dir2 = false;
+float avgRpm = 0.0f;
+float avgVel = 0.0f;
+bool dir1 = false;
+bool dir2 = false;
 
 // IMU velocity / acceleration
-float vel_imu   = 0.0f;
+float vel_imu = 0.0f;
 float accel_enc = 0.0f;
 float accel_imu = 0.0f;
 
 // Leaky-integrator time constant: prevents accelerometer bias drift.
-const float IMU_VEL_TAU          = 2.0f;
+const float IMU_VEL_TAU = 2.0f;
 // Accel readings below this (m/s^2) are treated as vibration noise.
-const float IMU_ACCEL_DEADBAND   = 0.25f;
+const float IMU_ACCEL_DEADBAND = 0.25f;
 // Max allowed accel difference (enc vs IMU) before slip is flagged (m/s^2).
 const float SLIP_ACCEL_THRESHOLD = 0.1f;
 // Minimum encoder speed (m/s) before slip detection activates.
-const float SLIP_MIN_SPEED       = 0.3f;
+const float SLIP_MIN_SPEED = 0.3f;
 
 bool is_slipping = false;
 
 // Timing
-unsigned long lastRFTime     = 0;
+unsigned long lastRFTime = 0;
 unsigned long lastSampleTime = 0;
-unsigned long lastRampTime   = 0;
+unsigned long lastRampTime = 0;
 
 // Encoder
 volatile unsigned long pulseCountR = 0;
 volatile unsigned long pulseCountL = 0;
 
 const float pulsesPerRevolution = 187.79855f;
-const int   scPinR = 6;
-const int   scPinL = 7;
+const int scPinR = 6;
+const int scPinL = 7;
 
-float rpmBuffer[5]      = {0};
-float accelEncBuffer[5] = {0};
-float accelImuBuffer[5] = {0};
-int   rpmIndex     = 0;
-bool  bufferFilled = false;
+float rpmBuffer[5] = { 0 };
+float accelEncBuffer[5] = { 0 };
+float accelImuBuffer[5] = { 0 };
+int rpmIndex = 0;
+bool bufferFilled = false;
 
 // Test/characterization variables
-bool  flag2    = false;
-int   counter  = 0;
-float rampRPM  = 0.0f;
+bool flag2 = false;
+int counter = 0;
+float rampRPM = 0.0f;
 float rampRate = 6.5f;
-float maxRPM   = 130.0f;
-float maxPWM   = 130.0f;
-float minPWM   = 0.0f;
+float maxRPM = 130.0f;
+float maxPWM = 130.0f;
+float minPWM = 0.0f;
 unsigned long period = 10000;
-float period2        = 500.0f;
+float period2 = 500.0f;
 int maxServoAngle = 158;
 int minServoAngle = 22;
-int currentAngle  = 90;
+int currentAngle = 90;
 
 // ── Packet structures ────────────────────────────────────────────────────────
 
 // Must match path_reciever.ino exactly (field order + types).
 struct DataPacket {
-  float   x;
-  float   y;
-  float   heading;
-  float   speed;
-  float   vel_imu;
-  float   accel_enc;
-  float   accel_imu;
+  float x;
+  float y;
+  float heading;
+  float speed;
+  float vel_imu;
+  float accel_enc;
+  float accel_imu;
   uint8_t slipping;
 };
 
 struct DataPacket2 {
-  float   x;
-  float   y;
-  float   heading;
-  float   speed;
+  float x;
+  float y;
+  float heading;
+  float speed;
   bool e_stop;
 };
 
 struct joy_stick_packet {
   float x = 0;
   float y = 0;
-  bool  e_stop;
+  bool e_stop;
 };
 
 // ── ISRs ─────────────────────────────────────────────────────────────────────
 
-void scISRR() { pulseCountR++; }
-void scISRL() { pulseCountL++; }
+void scISRR() {
+  pulseCountR++;
+}
+void scISRL() {
+  pulseCountL++;
+}
 
 // ── RF helpers ───────────────────────────────────────────────────────────────
 
@@ -174,11 +178,11 @@ void send_path() {
     path_radio.write(&pkt2, sizeof(pkt2));
     return;
   }
-  if (millis()-lastTransTime < TRANS_INT)
+  if (millis() - lastTransTime < TRANS_INT)
     return;
-    
+
   lastTransTime = millis();
-  
+
   pkt2.x = pos_x;
   pkt2.y = pos_y;
   pkt2.heading = vehicle_heading;
@@ -188,10 +192,14 @@ void send_path() {
   if (!path_radio.write(&pkt2, sizeof(pkt2))) {
     Serial.println("TX FAIL");
   } else {
-    Serial.print("TX OK | X: ");  Serial.print(pkt2.x, 2);
-    Serial.print(" Y: ");         Serial.print(pkt2.y, 2);
-    Serial.print(" H: ");         Serial.print(pkt2.heading, 1);
-    Serial.println(" V: ");         Serial.print(pkt2.speed, 2);
+    Serial.print("TX OK | X: ");
+    Serial.print(pkt2.x, 2);
+    Serial.print(" Y: ");
+    Serial.print(pkt2.y, 2);
+    Serial.print(" H: ");
+    Serial.print(pkt2.heading, 1);
+    Serial.println(" V: ");
+    Serial.print(pkt2.speed, 2);
     // Serial.print(" VI: ");        Serial.print(pkt.vel_imu, 2);
     // Serial.print(" A_enc: ");     Serial.print(pkt.accel_enc, 2);
     // Serial.print(" A_imu: ");     Serial.print(pkt.accel_imu, 2);
@@ -225,12 +233,12 @@ void set_control_params() {
     theta = 90;
 
   // Slew-rate limit (5 deg per call)
-  if (theta - theta_old >=  5) theta = theta_old + 5;
+  if (theta - theta_old >= 5) theta = theta_old + 5;
   if (theta - theta_old <= -5) theta = theta_old - 5;
 
   myservo.write(theta);
   servoAngle = theta;
-  theta_old  = theta;
+  theta_old = theta;
 
   // THROTTLE (Y)
   if (yVal < 488)
@@ -242,15 +250,15 @@ void set_control_params() {
 
   // DIFFERENTIAL DRIVE
   const float wheelBaseFactor = 1.515f;
-  const float offsetFactor    = 0.1875f;
+  const float offsetFactor = 0.1875f;
   float theta_rad = theta * PI / 180.0f;
 
   if (theta == 90) {
-    r_RPM_left  = velocity;
+    r_RPM_left = velocity;
     r_RPM_right = velocity;
   } else {
-    float turnFactor = tan(theta_rad - (PI/2));
-    r_RPM_left  = velocity * (1.0f + ((turnFactor * offsetFactor) / (wheelBaseFactor)));
+    float turnFactor = tan(theta_rad - (PI / 2));
+    r_RPM_left = velocity * (1.0f + ((turnFactor * offsetFactor) / (wheelBaseFactor)));
     r_RPM_right = velocity * (1.0f - ((turnFactor * offsetFactor) / (wheelBaseFactor)));
   }
 }
@@ -269,7 +277,7 @@ void drive() {
     dir2 = false;
   }
 
-  pwmMotor1 = constrain((int)((r_RPM_left  / 2.6f) * 130.0f), 0, 130);
+  pwmMotor1 = constrain((int)((r_RPM_left / 2.6f) * 130.0f), 0, 130);
   pwmMotor2 = constrain((int)((r_RPM_right / 2.6f) * 130.0f), 0, 130);
 
   analogWrite(mainMotor1, pwmMotor1);
@@ -286,31 +294,44 @@ void ramp_drive() {
   else
     rampRPM = maxRPM - constrain(rampRate * counter, 0.0f, maxRPM);
 
-  if (rampRPM >= maxRPM) { flag2 = true;  counter = 0; }
-  if (rampRPM <= 0.0f  ) { flag2 = false; counter = 0; }
+  if (rampRPM >= maxRPM) {
+    flag2 = true;
+    counter = 0;
+  }
+  if (rampRPM <= 0.0f) {
+    flag2 = false;
+    counter = 0;
+  }
 
-  dir1 = true; dir2 = false;
+  dir1 = true;
+  dir2 = false;
   pwmMotor1 = pwmMotor2 = constrain((int)rampRPM, 0, 130);
 
-  if ((millis() - lastRampTime) > 1000) { counter++; lastRampTime = millis(); }
+  if ((millis() - lastRampTime) > 1000) {
+    counter++;
+    lastRampTime = millis();
+  }
 
   analogWrite(mainMotor1, pwmMotor1);
   analogWrite(mainMotor2, pwmMotor2);
   digitalWrite(mainMotor1Dir, dir1);
   digitalWrite(mainMotor2Dir, dir2);
-  Serial.print("rampRPM: "); Serial.println(rampRPM);
+  Serial.print("rampRPM: ");
+  Serial.println(rampRPM);
 }
 
 void step_drive() {
   unsigned long t = millis() % period;
-  float pwmValue  = (t < 5000) ? 0.0f : maxPWM;
-  dir1 = true; dir2 = false;
+  float pwmValue = (t < 5000) ? 0.0f : maxPWM;
+  dir1 = true;
+  dir2 = false;
   pwmMotor1 = pwmMotor2 = (int)pwmValue;
   analogWrite(mainMotor1, pwmMotor1);
   analogWrite(mainMotor2, pwmMotor2);
   digitalWrite(mainMotor1Dir, dir1);
   digitalWrite(mainMotor2Dir, dir2);
-  Serial.print("step PWM: "); Serial.println(pwmValue);
+  Serial.print("step PWM: ");
+  Serial.println(pwmValue);
 }
 
 void steering_ramp_drive() {
@@ -321,7 +342,8 @@ void steering_ramp_drive() {
   }
 
   if (currentAngle >= maxServoAngle) {
-    flag2 = true; counter = 0;
+    flag2 = true;
+    counter = 0;
     delay(5000);
     myservo.write(90);
     pwmMotor1 = pwmMotor2 = 0;
@@ -330,10 +352,11 @@ void steering_ramp_drive() {
   if ((millis() - lastRampTime) > 500) {
     counter++;
     lastRampTime = millis();
-    servoAngle   = currentAngle;
+    servoAngle = currentAngle;
   }
 
-  dir1 = false; dir2 = true;
+  dir1 = false;
+  dir2 = true;
   analogWrite(mainMotor1, pwmMotor1);
   analogWrite(mainMotor2, pwmMotor2);
   digitalWrite(mainMotor1Dir, dir1);
@@ -342,16 +365,21 @@ void steering_ramp_drive() {
 
 void sin_drive() {
   float normalized = (sinf(2.0f * PI * counter / period2) + 1.0f) / 2.0f;
-  if ((millis() - lastRampTime) > 100) { counter++; lastRampTime = millis(); }
+  if ((millis() - lastRampTime) > 100) {
+    counter++;
+    lastRampTime = millis();
+  }
 
   pwmMotor1 = constrain((int)(minPWM + normalized * (maxPWM - minPWM)), 0, 130);
-  dir1 = true; dir2 = false;
+  dir1 = true;
+  dir2 = false;
 
   analogWrite(mainMotor1, pwmMotor1);
   analogWrite(mainMotor2, pwmMotor1);
   digitalWrite(mainMotor1Dir, dir1);
   digitalWrite(mainMotor2Dir, dir2);
-  Serial.print("sin PWM: "); Serial.println(pwmMotor1);
+  Serial.print("sin PWM: ");
+  Serial.println(pwmMotor1);
 }
 
 // ── Sensors ──────────────────────────────────────────────────────────────────
@@ -365,7 +393,7 @@ void update_position() {
   const float circumference = 2.0f * PI * 0.0762f;
 
   float prevVel = avgVel;
-  avgVel    = ((avgRpm * circumference) / 60.0f) * 1.246;
+  avgVel = ((avgRpm * circumference) / 60.0f) * 1.246;
   accel_enc = (dt > 0.0f) ? (avgVel - prevVel) / dt : 0.0f;
 
   float heading_rad = vehicle_heading * PI / 180.0f;
@@ -392,43 +420,60 @@ void updateImuVelocity() {
 
 // Quaternion-based yaw — avoids gimbal lock from Euler angles.
 float getHeading() {
-  static float heading_smooth = 0.0f;
-  static bool  initialized    = false;
+  static float heading_smooth = 0;
+  static bool initialized = false;
 
-  imu::Quaternion q = bno.getQuat();
-  float sinYaw = 2.0f * (q.w() * q.z() + q.x() * q.y());
-  float cosYaw = 1.0f - 2.0f * (q.y() * q.y() + q.z() * q.z());
-  float raw    = atan2f(sinYaw, cosYaw) * 180.0f / PI;
+  sensors_event_t orientationData;
+  bno.getEvent(&orientationData, Adafruit_BNO055::VECTOR_EULER);
 
-  if (raw < 0.0f)    raw += 360.0f;
+  float raw = orientationData.orientation.x;  // 0–360
+
+  // Wrap
   if (raw >= 360.0f) raw -= 360.0f;
+  if (raw < 0.0f) raw += 360.0f;
 
-  if (!initialized) { heading_smooth = raw; initialized = true; return heading_smooth; }
+  if (!initialized) {
+    heading_smooth = raw;
+    initialized = true;
+    return heading_smooth;
+  }
 
+  // Shortest path difference
   float diff = raw - heading_smooth;
-  if (diff >  180.0f) diff -= 360.0f;
+  if (diff > 180.0f) diff -= 360.0f;
   if (diff < -180.0f) diff += 360.0f;
 
-  const float MAX_STEP = 1.0f;
-  if (diff >  MAX_STEP) diff =  MAX_STEP;
+  // Rate limit (deg per loop)
+  const float MAX_STEP = 5.0f;
+  if (diff > MAX_STEP) diff = MAX_STEP;
   if (diff < -MAX_STEP) diff = -MAX_STEP;
 
-  heading_smooth += diff * 0.05f;
+  // Low-pass filter
+  const float ALPHA = 1.0f;
+  heading_smooth += diff * ALPHA;
 
+  // Wrap again
   if (heading_smooth >= 360.0f) heading_smooth -= 360.0f;
-  if (heading_smooth <  0.0f)   heading_smooth += 360.0f;
+  if (heading_smooth < 0.0f) heading_smooth += 360.0f;
 
   return heading_smooth;
 }
 
 void debug() {
-  Serial.print("X:");     Serial.print(xVal);
-  Serial.print(" Y:");    Serial.print(yVal);
-  Serial.print(" Th:");   Serial.print(theta);
-  Serial.print(" Vel:");  Serial.print(velocity);
-  Serial.print(" P1:");   Serial.print(pwmMotor1);
-  Serial.print(" P2:");   Serial.print(pwmMotor2);
-  Serial.print(" SLIP:"); Serial.println(is_slipping);
+  Serial.print("X:");
+  Serial.print(xVal);
+  Serial.print(" Y:");
+  Serial.print(yVal);
+  Serial.print(" Th:");
+  Serial.print(theta);
+  Serial.print(" Vel:");
+  Serial.print(velocity);
+  Serial.print(" P1:");
+  Serial.print(pwmMotor1);
+  Serial.print(" P2:");
+  Serial.print(pwmMotor2);
+  Serial.print(" SLIP:");
+  Serial.println(is_slipping);
 }
 
 // ── Setup / Loop ─────────────────────────────────────────────────────────────
@@ -456,20 +501,20 @@ void setup() {
   myservo.attach(9);
   myservo.write(90);
 
-  pinMode(mainMotor1,    OUTPUT);
-  pinMode(mainMotor2,    OUTPUT);
+  pinMode(mainMotor1, OUTPUT);
+  pinMode(mainMotor2, OUTPUT);
   pinMode(mainMotor1Dir, OUTPUT);
   pinMode(mainMotor2Dir, OUTPUT);
-  pinMode(LED_BUILTIN,   OUTPUT);
+  pinMode(LED_BUILTIN, OUTPUT);
 
   pinMode(scPinR, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(scPinR), scISRR, RISING);
   pinMode(scPinL, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(scPinL), scISRL, RISING);
 
-  lastRFTime     = millis();
+  lastRFTime = millis();
   lastSampleTime = millis();
-  lastRampTime   = millis();
+  lastRampTime = millis();
   delay(1000);
 }
 
@@ -483,7 +528,7 @@ void loop() {
   if ((millis() - lastRFTime) >= 500) {
     xVal = 512;
     yVal = 512;
-   E_STOP = true;
+    E_STOP = true;
   } else {
     E_STOP = false;
   }
@@ -508,10 +553,13 @@ void loop() {
 
     rpmBuffer[rpmIndex] = rpm;
     rpmIndex++;
-    if (rpmIndex >= 5) { rpmIndex = 0; bufferFilled = true; }
+    if (rpmIndex >= 5) {
+      rpmIndex = 0;
+      bufferFilled = true;
+    }
 
-    int   samples = bufferFilled ? 5 : rpmIndex;
-    float sumRpm  = 0;
+    int samples = bufferFilled ? 5 : rpmIndex;
+    float sumRpm = 0;
     for (int i = 0; i < samples; i++) sumRpm += rpmBuffer[i];
     if (samples > 0) avgRpm = sumRpm / samples;
 
@@ -532,8 +580,7 @@ void loop() {
       accel_imu = sumAimu / samples;
     }
 
-    is_slipping = (avgVel > SLIP_MIN_SPEED) &&
-                  (fabsf(accel_enc - accel_imu) > SLIP_ACCEL_THRESHOLD);
+    is_slipping = (avgVel > SLIP_MIN_SPEED) && (fabsf(accel_enc - accel_imu) > SLIP_ACCEL_THRESHOLD);
 
     // Diagnostic: shows raw pulse count so you can verify ISR is firing.
     // Serial.print("cnt:");   Serial.print(count);

@@ -1,32 +1,29 @@
-#include <string>
 #include <Arduino.h>
 
+#pragma pack(push, 1)
 struct Coord {
     float x;
     float y;
     float speed;
     float heading;
 };
+#pragma pack(pop)
 
 class Path {
 public:
     Path(int cap) {
         capacity = (cap < 1) ? 1 : cap;
-        buff = new Coord[capacity];   // one-time allocation
+        buff = new Coord[capacity];
         curr = 0;
         end = 0;
     }
 
     ~Path() {
         delete[] buff;
-        buff = nullptr;
     }
 
-    // Insert new coordinate
     bool insert(const Coord& coord) {
-        if (size() >= capacity) {
-            return false; // no overwrite
-        }
+        if (size() >= capacity) return false;
         buff[end % capacity] = coord;
         end++;
         return true;
@@ -44,6 +41,23 @@ public:
         if (size() == 0) return false;
         out = buff[(end + capacity - 1) % capacity];
         return true;
+    }
+
+    //returns true if both coords are the same
+    bool compare(Coord& c1, Coord& c2) {
+      if (c1.x != c2.x)
+        return false;
+
+      if (c1.y != c2.y)
+        return false;
+
+      if (c1.heading != c2.heading)
+        return false;
+
+      if (c1.speed != c2.speed)
+        return false;
+
+      return true;
     }
 
     // Pop next element
@@ -66,21 +80,17 @@ public:
         return end - curr;
     }
 
-    // Debug print (no heap usage)
-    void transmit() {
-        char buffer[80];
-        uint64_t start = curr;
+    void transmit(Coord& currPos, Coord& targetPos) {
+        Serial.println("ACK_START");
 
-        while (start < end) {
-            Coord& c = buff[start % capacity];
+        
+        Serial.write((uint8_t*)&currPos, sizeof(Coord));
+        delay(10); // helps Pi not overflow buffer during test
+        Serial.write((uint8_t*)&targetPos, sizeof(Coord));
 
-            snprintf(buffer, sizeof(buffer),
-                     "(%.2f, %.2f, %.2f, %.2f)",
-                     c.x, c.y, c.speed, c.heading);
 
-            Serial.println(buffer);
-            start++;
-        }
+        Serial.println("DONE_STREAM");        
+
     }
 
 private:
@@ -89,79 +99,78 @@ private:
     uint64_t end;
     Coord* buff;
 };
-// int PATH_LEN = 5;
-// std::string path[5] = {"(0, 0, 40)", "(1, 0, 70)", "(1, 3, 20)", "(3, 3, 0)", "(5, 3, 0)"};
 
-Path macro_path(5);
-std::string* micro_path = nullptr;
-int micro_path_size = 0;
+// ---------------- TEST DATA ----------------
+Path path(10);
+Coord currPos = {5, 5, 0.1, 0};
+Coord targetPos = {10, 15, 0.1, 90};
 
-
+// ---------------- SETUP ----------------
 void setup() {
-  // put your setup code here, to run once:
-  Serial.begin(115200);
-  Coord test = {.x=0, .y=0, .speed=12, .heading=15};
-  Coord test2 = {.x=1.12, .y=3, .speed=22.4, .heading=10};
-  Coord test3 = {.x=3, .y=3, .speed=0.992, .heading=90};
-  Coord test4 = {.x=5.01, .y=3.14, .speed=18.246, .heading=17};
+    Serial.begin(115200);
 
+    while (!Serial) {
+        ; // wait for USB serial
+    }
 
-  macro_path.insert(test);
-  macro_path.insert(test2);
-  macro_path.insert(test3);
-  macro_path.insert(test4);
+    delay(2000);
+
+    Serial.println("ARDUINO READY");
+
+    // Populate test path
+    for (int i = 0; i < 5; i++) {
+        Coord c;
+        c.x = i * 1.1;
+        c.y = i * 2.2;
+        c.speed = i * 3.3;
+        c.heading = i * 10.0;
+
+        path.insert(c);
+    }
 }
 
+// ---------------- LOOP ----------------
 void loop() {
-    while (Serial.available()) { 
-        char buffer[128];
-        int n = Serial.readBytesUntil('\n', buffer, sizeof(buffer) - 1);
-        buffer[n] = '\0';
-        std::string line = buffer;
 
-        // ---------- Handle "Start" ----------
-        if (line == "Start") {
-            macro_path.transmit();
-            Serial.println("END");
-            continue;
+    if (Serial.available()) {
+        String cmd = Serial.readStringUntil('\n');
+        cmd.trim();
+
+        // ---------- TEST 1: STREAM FULL PATH ----------
+        if (cmd == "Start") {
+            // Serial.println("ACK_START");
+            delay(100);
+
+            path.transmit(currPos, targetPos);
+
         }
 
-        // ---------- Handle "Ready" ----------
-        if (line == "Ready") {
-            Serial.println("Initiate"); 
+        // ---------- TEST 2: SINGLE PACKET HANDSHAKE ----------
+        else if (cmd == "Ready") {
+            Serial.println("ACK_READY");
 
-            unsigned long timeout = 600;  //200ms
-            unsigned long start = millis();
-            while (Serial.available() == 0 && (millis() - start) < timeout) {} //small wait for UART buffer to be filled
-            if (Serial.available() == 0) { // timeout: skip
-                Serial.println("Incomplete");
-                continue;
-            }
-            n = Serial.readBytesUntil('\n', buffer, sizeof(buffer) - 1);
-            buffer[n] = '\0';
-            micro_path_size = atoi(buffer);
+            delay(50);
 
-            if (micro_path_size <= 0 || micro_path_size > 1000) continue;
+            Serial.println("Initiate");
 
-            micro_path = new std::string[micro_path_size];
+            Coord received;
+            Serial.readBytes((char*)&received, sizeof(Coord));
 
-            // ---------- Read micro path lines ----------
-            for (int i = 0; i < micro_path_size; i++) {
-                Serial.println("here");
-                while (Serial.available() == 0 && (millis() - start) < timeout) {}
-                if (Serial.available() == 0) {
-                    Serial.println("Incomplete");
-                    break;
-                }
-                n = Serial.readBytesUntil('\n', buffer, sizeof(buffer) - 1);
-                buffer[n] = '\0';
-                micro_path[i] = buffer;
-            }
+            Serial.print("RX: ");
+            Serial.print(received.x);
+            Serial.print(", ");
+            Serial.print(received.y);
+            Serial.print(", ");
+            Serial.print(received.speed);
+            Serial.print(", ");
+            Serial.println(received.heading);
 
-            Serial.println("Done"); 
+            Serial.println("Done");
+        }
 
-            delete[] micro_path;  //free memory
-            micro_path = nullptr;
+        // ---------- UNKNOWN ----------
+        else {
+            Serial.println("UNKNOWN_CMD");
         }
     }
 }

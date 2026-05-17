@@ -14,7 +14,6 @@
 #include <Wire.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
-#include "Path.cpp"
 
 Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28);
 // ===================== NRF PATH RADIO =====================
@@ -52,13 +51,13 @@ struct TelemetryPacket {
   //float currentPos;
   //float desiredVel;
   float currentVel;
-  //float desiredHeading;
+  float desiredHeading;
   float currentHeading;
   //int servoCommand;
   //float steeringCorrection;
   float velocityCommand;
   //float pwmCommand;
-  float filteredPWM;
+  //float filteredPWM;
 };
 
 DataPacket path_checkpnt; //received from lead
@@ -228,14 +227,14 @@ void sendTelemetry() {
   //pkt.currentPos = currentPosition;
   //pkt.desiredVel = desiredVelocity;
   pkt.currentVel = currentVelocity;
-  //pkt.desiredHeading = desiredHeading;
+  pkt.desiredHeading = desiredHeading;
   pkt.currentHeading = currentHeading;
   //pkt.servoCommand = servoCommand;
   //pkt.steeringCorrection = steeringCorrection;
 
   pkt.velocityCommand = velocityCommand;
   //-pkt.pwmCommand = pwmCommand;
-  pkt.filteredPWM = filteredPWM;
+  //pkt.filteredPWM = filteredPWM;
 
 
   bool success = telemetry_radio.write(&pkt, sizeof(pkt));
@@ -375,22 +374,32 @@ void getDesiredPolar() {
   desiredPosition = sqrt((dx * dx) + (dy * dy));
   //float safeDesiredX = max(dx, 0.01);
   //float safeDesiredY = max(dy, 0.01);
-  desiredHeading =  atan2(dx, dy) * (180/PI);
-
+  float headingDirection =  atan2(dx, dy) * (180/PI);
   //float distanceToTarget = sqrt(dx * dx + dy * dy);
-
+  float checkpointHeading = 0;
   // Since currentPosition is cumulative distance traveled,
   // desiredPosition should also be cumulative.
   //desiredPosition = segmentStartPosition + distanceToTarget;
 
   //desiredHeading = atan2(dx, dy) * 180.0 / PI;
+  if (headingDirection < 0) {
+    headingDirection += 360.0;
+  }
+  headingDirection = -(headingDirection - 90.0);
+  if (headingDirection < 0) {
+    headingDirection += 360.0;
+  }
+  headingDirection = headingDirection * PI/180; // convert back to radians
+  checkpointHeading = checkpointHeading * PI/180; // convert to radians
+  float weightDirection = max((desiredPosition-0.8)*10, 0);
+  float weightCheckpoint = 1/(desiredPosition + 0.1);
+  float xM = cos(headingDirection)*weightDirection + cos(checkpointHeading)*weightCheckpoint;
+  float yM = sin(headingDirection)*weightDirection + sin(checkpointHeading)*weightCheckpoint;
+  desiredHeading = atan2(yM, xM) * 180.0 / PI;
   if (desiredHeading < 0) {
     desiredHeading += 360.0;
   }
-  desiredHeading = -(desiredHeading - 90.0);
-  if (desiredHeading < 0) {
-    desiredHeading += 360.0;
-  }
+
 }
 void changePath() {
 
@@ -468,11 +477,11 @@ void loop() {
 
     receive_path();
     //Emergency stop if transmitter button is pressed
-    if (remoteEStop) {
-      emergencyStop();
-      lastControlTime = millis();   // prevents dt jump when restarting
-      return;
-    }
+    // if (remoteEStop) {
+    //   emergencyStop();
+    //   lastControlTime = millis();   // prevents dt jump when restarting
+    //   return;
+    // }
     getDesiredPolar();
     updateVelocity(dt);
     updatePosition(dt);
@@ -480,7 +489,6 @@ void loop() {
     steeringPID(dt);
     sendTelemetry();
     changePath();
-
     //debugPrint();
   }
 }

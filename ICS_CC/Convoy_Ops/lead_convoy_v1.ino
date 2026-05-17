@@ -491,7 +491,7 @@ void loop() {
   // set_control_params runs AFTER joy_stick_controls so it uses the freshest xVal/yVal.
   set_control_params();
   drive();
-  //send_path();
+  send_path();
 
   // Encoder RPM sampling at 200 ms intervals.
   // update_position and updateImuVelocity run here so they always use fresh avgRpm.

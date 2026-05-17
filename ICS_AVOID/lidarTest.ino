@@ -1,261 +1,318 @@
-#include <RPLidar.h>
+import time
+from rplidar import RPLidar
 
-// ===================================================
-// RPLIDAR + TB6612FNG OBSTACLE AVOIDANCE
-// Arduino Uno R4 WiFi using Serial for lidar
-// IMPORTANT:
-//   - Disconnect lidar TX/RX during upload
-//   - Reconnect after upload
-// ===================================================
+import matplotlib
+matplotlib.use("Agg")
 
-RPLidar lidar;
+import matplotlib.pyplot as plt
+import numpy as np
 
-// ---------------- LIDAR PIN ----------------
-const uint8_t LIDAR_MOTOR_PIN = 11;   // PWM pin for RPLIDAR motor
-// Use pin 11 so pin 3 can stay assigned to PWMB from your motor code
 
-// ---------------- MOTOR DRIVER PINS ----------------
-const uint8_t PWMA = 9;    // Left motor speed (PWM)
-const uint8_t AIN1 = 8;
-const uint8_t AIN2 = 7;
+PORT = "/dev/ttyUSB0"
 
-const uint8_t PWMB = 3;    // Right motor speed (PWM)
-const uint8_t BIN1 = 5;
-const uint8_t BIN2 = 4;
+FRONT_LIMIT_MM = 2000
+FRONT_FOV_DEG = 60
+MAX_DISTANCE_MM = 4000
 
-const uint8_t STBY = 6;    // Standby pin (must be HIGH)
 
-// ---------------- DRIVE SETTINGS ----------------
-const uint8_t BASE_SPEED   = 100;
-const uint8_t TURN_SPEED   = 100;
-const uint8_t BACKUP_SPEED = 90;
+macro_path = [
+    (0, 0, 1.0, 0),
+    (1, 0, 1.0, 0),
+    (2, 0, 1.0, 0),
+    (3, 0, 1.0, 0),
+    (4, 0, 1.0, 0),
+    (5, 0, 1.0, 0),
+    (6, 0, 1.0, 0),
+    (7, 0, 1.0, 0),
+    (8, 0, 1.0, 0),
+    (9, 0, 1.0, 0),
+    (10, 0, 1.0, 0),
+]
 
-// Distances in mm
-const float FRONT_STOP_MM   = 500.0;
-const float FRONT_WARN_MM   = 800.0;
-const float SIDE_CAUTION_MM = 350.0;
 
-// ---------------- SECTOR STATE ----------------
-float nearestFront = 99999.0;
-float nearestLeft  = 99999.0;
-float nearestRight = 99999.0;
+history = []
+front_history = []
+micro_paths_used = []
 
-// ---------------- Motor Helper ----------------
-inline uint8_t clampPWM(int v) {
-  return (uint8_t)constrain(v, 0, 255);
-}
 
-void leftMotorForward(uint8_t pwm) {
-  digitalWrite(AIN1, HIGH);
-  digitalWrite(AIN2, LOW);
-  analogWrite(PWMA, clampPWM(pwm));
-}
+def patch_lidar_health(lidar):
+    original_get_health = lidar.get_health
 
-void leftMotorBackward(uint8_t pwm) {
-  digitalWrite(AIN1, LOW);
-  digitalWrite(AIN2, HIGH);
-  analogWrite(PWMA, clampPWM(pwm));
-}
+    def fixed_get_health():
+        result = original_get_health()
+        if isinstance(result, tuple) and len(result) > 2:
+            return result[0], result[1]
+        return result
 
-void leftMotorStop() {
-  digitalWrite(AIN1, LOW);
-  digitalWrite(AIN2, LOW);
-  analogWrite(PWMA, 0);
-}
+    lidar.get_health = fixed_get_health
 
-void rightMotorForward(uint8_t pwm) {
-  digitalWrite(BIN1, HIGH);
-  digitalWrite(BIN2, LOW);
-  analogWrite(PWMB, clampPWM(pwm));
-}
 
-void rightMotorBackward(uint8_t pwm) {
-  digitalWrite(BIN1, LOW);
-  digitalWrite(BIN2, HIGH);
-  analogWrite(PWMB, clampPWM(pwm));
-}
+def format_coord(coord):
+    x, y, speed, heading = coord
+    return f"({x:.2f}, {y:.2f}, {speed:.2f}, {heading:.2f})"
 
-void rightMotorStop() {
-  digitalWrite(BIN1, LOW);
-  digitalWrite(BIN2, LOW);
-  analogWrite(PWMB, 0);
-}
 
-void motorsBrake() {
-  digitalWrite(AIN1, LOW); digitalWrite(AIN2, LOW);
-  digitalWrite(BIN1, LOW); digitalWrite(BIN2, LOW);
-  analogWrite(PWMA, 0); analogWrite(PWMB, 0);
-}
+def read_lidar(scan):
+    front = []
+    left = []
+    right = []
 
-void motorsForward(uint8_t leftPWM, uint8_t rightPWM) {
-  leftMotorForward(leftPWM);
-  rightMotorForward(rightPWM);
-}
+    half_fov = FRONT_FOV_DEG / 2
 
-void motorsBackward(uint8_t leftPWM, uint8_t rightPWM) {
-  leftMotorBackward(leftPWM);
-  rightMotorBackward(rightPWM);
-}
+    for _, angle, distance in scan:
+        if distance <= 0 or distance > MAX_DISTANCE_MM:
+            continue
 
-void pivotLeft(uint8_t leftPWM, uint8_t rightPWM) {
-  leftMotorBackward(leftPWM);
-  rightMotorForward(rightPWM);
-}
+        if angle >= 360 - half_fov or angle <= half_fov:
+            front.append(distance)
+        elif half_fov < angle < 150:
+            left.append(distance)
+        elif 210 < angle < 360 - half_fov:
+            right.append(distance)
 
-void pivotRight(uint8_t leftPWM, uint8_t rightPWM) {
-  leftMotorForward(leftPWM);
-  rightMotorBackward(rightPWM);
-}
+    front_min = min(front) if front else 99999
+    left_avg = sum(left) / len(left) if left else 99999
+    right_avg = sum(right) / len(right) if right else 99999
 
-// ---------------- LIDAR HELPERS ----------------
-void resetSectors() {
-  nearestFront = 99999.0;
-  nearestLeft  = 99999.0;
-  nearestRight = 99999.0;
-}
-
-bool validReading(float distance, uint8_t quality) {
-  if (quality == 0) return false;
-  if (distance <= 0.0) return false;
-  if (distance > 6000.0) return false;
-  return true;
-}
-
-void updateSectors(float angle, float distance, uint8_t quality) {
-  if (!validReading(distance, quality)) return;
-
-  while (angle < 0) angle += 360.0;
-  while (angle >= 360.0) angle -= 360.0;
-
-  // Front: 330..360 and 0..30
-  if (angle >= 330.0 || angle <= 30.0) {
-    if (distance < nearestFront) nearestFront = distance;
-  }
-  // Left: 30..120
-  else if (angle > 30.0 && angle <= 120.0) {
-    if (distance < nearestLeft) nearestLeft = distance;
-  }
-  // Right: 240..330
-  else if (angle >= 240.0 && angle < 330.0) {
-    if (distance < nearestRight) nearestRight = distance;
-  }
-}
-
-// ---------------- AVOIDANCE ----------------
-void chooseMotion() {
-  // Immediate obstacle ahead
-  if (nearestFront < FRONT_STOP_MM) {
-    motorsBrake();
-    delay(80);
-
-    motorsBackward(BACKUP_SPEED, BACKUP_SPEED);
-    delay(180);
-
-    motorsBrake();
-    delay(60);
-
-    if (nearestLeft > nearestRight) {
-      pivotLeft(TURN_SPEED, TURN_SPEED);
-      delay(280);
-    } else {
-      pivotRight(TURN_SPEED, TURN_SPEED);
-      delay(280);
+    return {
+        "detected": front_min <= FRONT_LIMIT_MM,
+        "front": front_min,
+        "left": left_avg,
+        "right": right_avg,
     }
 
-    motorsBrake();
-    delay(40);
-    return;
-  }
 
-  // Front is somewhat close: steer toward more open side
-  if (nearestFront < FRONT_WARN_MM) {
-    if (nearestLeft > nearestRight) {
-      // turn a little left
-      motorsForward(BASE_SPEED - 10, BASE_SPEED + 20);
-    } else {
-      // turn a little right
-      motorsForward(BASE_SPEED + 20, BASE_SPEED - 10);
-    }
-    return;
-  }
+def find_merge_goal(current, macro_path):
+    cx, cy, _, _ = current
 
-  // Side bias
-  if (nearestLeft < SIDE_CAUTION_MM && nearestRight >= SIDE_CAUTION_MM) {
-    motorsForward(BASE_SPEED + 10, BASE_SPEED - 25);
-    return;
-  }
+    candidates = []
 
-  if (nearestRight < SIDE_CAUTION_MM && nearestLeft >= SIDE_CAUTION_MM) {
-    motorsForward(BASE_SPEED - 25, BASE_SPEED + 10);
-    return;
-  }
+    for point in macro_path:
+        x, y, _, _ = point
+        if x > cx:
+            candidates.append(point)
 
-  // Clear
-  motorsForward(BASE_SPEED, BASE_SPEED);
-}
+    if not candidates:
+        return macro_path[-1]
 
-void startLidarIfPossible() {
-  rplidar_response_device_info_t info;
+    index = min(2, len(candidates) - 1)
+    return candidates[index]
 
-  if (IS_OK(lidar.getDeviceInfo(info, 100))) {
-    lidar.startScan();
-    analogWrite(LIDAR_MOTOR_PIN, 180);
-    delay(300);
-  } else {
-    analogWrite(LIDAR_MOTOR_PIN, 0);
-    motorsBrake();
-  }
-}
 
-// ---------------- SETUP ----------------
-void setup() {
-  Serial.begin(115200);
+def generate_micro_path(current, macro_path, obs):
+    x, y, speed, heading = current
+    merge_goal = find_merge_goal(current, macro_path)
 
-  pinMode(PWMA, OUTPUT);
-  pinMode(AIN1, OUTPUT);
-  pinMode(AIN2, OUTPUT);
+    if not obs["detected"]:
+        return []
 
-  pinMode(PWMB, OUTPUT);
-  pinMode(BIN1, OUTPUT);
-  pinMode(BIN2, OUTPUT);
+    if obs["left"] > obs["right"]:
+        return [
+            (x, y + 1, speed, heading),
+            (x + 1, y + 1, speed, heading),
+            (x + 2, y + 0.5, speed, heading),
+            merge_goal,
+        ]
 
-  pinMode(STBY, OUTPUT);
-  digitalWrite(STBY, HIGH);
+    return [
+        (x, y - 1, speed, heading),
+        (x + 1, y - 1, speed, heading),
+        (x + 2, y - 0.5, speed, heading),
+        merge_goal,
+    ]
 
-  pinMode(LIDAR_MOTOR_PIN, OUTPUT);
-  analogWrite(LIDAR_MOTOR_PIN, 0);
 
-  motorsBrake();
-  delay(500);
+def save_final_plot(filename="final_path.png"):
+    if not history:
+        print("No path history to save.")
+        return
 
-  // RPLIDAR uses Serial
-  lidar.begin(Serial);
+    fig = plt.figure(figsize=(16, 10))
+    fig.suptitle(
+        "Autonomous Vehicle Obstacle Avoidance Final Path",
+        fontsize=14,
+        fontweight="bold"
+    )
 
-  resetSectors();
-  startLidarIfPossible();
-}
+    # Panel 1: Position Map
+    ax_map = fig.add_subplot(2, 2, 1)
+    ax_map.set_title("Position Map")
+    ax_map.set_xlabel("X Position")
+    ax_map.set_ylabel("Y Position")
+    ax_map.grid(True, alpha=0.3)
+    ax_map.set_aspect("equal")
 
-// ---------------- LOOP ----------------
-void loop() {
-  if (IS_OK(lidar.waitPoint())) {
-    float distance = lidar.getCurrentPoint().distance;
-    float angle    = lidar.getCurrentPoint().angle;
-    uint8_t quality = lidar.getCurrentPoint().quality;
-    bool startBit   = lidar.getCurrentPoint().startBit;
+    macro_x = [p[0] for p in macro_path]
+    macro_y = [p[1] for p in macro_path]
 
-    updateSectors(angle, distance, quality);
+    ax_map.plot(macro_x, macro_y, "r--", linewidth=2, label="Macro Path")
+    ax_map.plot(macro_x, macro_y, "ro", markersize=7)
 
-    // On each new scan, make one driving decision
-    if (startBit) {
-      chooseMotion();
-      resetSectors();
-    }
-  } else {
-    // Lost lidar data: stop for safety and retry
-    motorsBrake();
-    analogWrite(LIDAR_MOTOR_PIN, 0);
-    delay(100);
+    for i, point in enumerate(macro_path):
+        ax_map.annotate(
+            f"P{i}",
+            (point[0], point[1]),
+            xytext=(5, 5),
+            textcoords="offset points",
+            fontsize=8
+        )
 
-    startLidarIfPossible();
-  }
-}
+    hist_x = [p[0] for p in history]
+    hist_y = [p[1] for p in history]
+
+    ax_map.plot(hist_x, hist_y, color="steelblue", linewidth=2.5, label="Path Taken")
+    ax_map.plot(hist_x[-1], hist_y[-1], "bo", markersize=10, label="Final Position")
+
+    for micro_path in micro_paths_used:
+        mx = [p[0] for p in micro_path]
+        my = [p[1] for p in micro_path]
+        ax_map.plot(mx, my, color="limegreen", linewidth=2, alpha=0.8)
+
+    ax_map.legend()
+
+    # Panel 2: Front Distance
+    ax_front = fig.add_subplot(2, 2, 2)
+    ax_front.set_title("Front Obstacle Distance")
+    ax_front.set_xlabel("Scan Step")
+    ax_front.set_ylabel("Distance (mm)")
+    ax_front.grid(True, alpha=0.3)
+
+    ax_front.plot(front_history, color="orange", linewidth=2, label="Front Distance")
+    ax_front.axhline(FRONT_LIMIT_MM, color="red", linestyle="--", label="2m Trigger")
+    ax_front.legend()
+
+    # Panel 3: Avoidance Events
+    ax_events = fig.add_subplot(2, 2, 3)
+    ax_events.set_title("Avoidance Summary")
+    ax_events.axis("off")
+
+    summary = (
+        f"Total steps: {len(history)}\n"
+        f"Micro paths triggered: {len(micro_paths_used)}\n"
+        f"Final position: {format_coord(history[-1])}\n"
+        f"Front trigger distance: {FRONT_LIMIT_MM} mm\n"
+        f"Front FOV: {FRONT_FOV_DEG} degrees"
+    )
+
+    ax_events.text(
+        0.05,
+        0.75,
+        summary,
+        fontsize=12,
+        verticalalignment="top"
+    )
+
+    # Panel 4: Macro vs Actual Path
+    ax_compare = fig.add_subplot(2, 2, 4)
+    ax_compare.set_title("Macro Path vs Actual Path")
+    ax_compare.set_xlabel("X Position")
+    ax_compare.set_ylabel("Y Position")
+    ax_compare.grid(True, alpha=0.3)
+    ax_compare.set_aspect("equal")
+
+    ax_compare.plot(macro_x, macro_y, "r--", linewidth=2, label="Macro Path")
+    ax_compare.plot(hist_x, hist_y, color="steelblue", linewidth=2.5, label="Actual Path")
+
+    for micro_path in micro_paths_used:
+        mx = [p[0] for p in micro_path]
+        my = [p[1] for p in micro_path]
+        ax_compare.plot(mx, my, color="limegreen", linewidth=2, alpha=0.8)
+
+    ax_compare.legend()
+
+    plt.tight_layout()
+    plt.savefig(filename, dpi=300)
+    plt.close(fig)
+
+    print(f"Saved final plot to {filename}")
+
+
+def main():
+    lidar = RPLidar(PORT)
+    patch_lidar_health(lidar)
+
+    current = macro_path[0]
+    macro_index = 0
+
+    active_micro_path = []
+    micro_index = 0
+    scan_count = 0
+
+    try:
+        print("Starting fake macro path simulation...")
+        print("Press Ctrl + C to stop and save final PNG.\n")
+
+        try:
+            lidar.stop()
+            lidar.stop_motor()
+            time.sleep(1)
+            lidar.clear_input()
+        except Exception:
+            pass
+
+        for scan in lidar.iter_scans(max_buf_meas=5000):
+            scan_count += 1
+
+            obs = read_lidar(scan)
+
+            if active_micro_path:
+                current = active_micro_path[micro_index]
+                micro_index += 1
+
+                if micro_index >= len(active_micro_path):
+                    active_micro_path = []
+                    micro_index = 0
+
+            elif obs["detected"]:
+                active_micro_path = generate_micro_path(current, macro_path, obs)
+                micro_index = 0
+
+                if active_micro_path:
+                    micro_paths_used.append(active_micro_path.copy())
+                    current = active_micro_path[micro_index]
+                    micro_index += 1
+
+            else:
+                if macro_index < len(macro_path) - 1:
+                    macro_index += 1
+                    current = macro_path[macro_index]
+
+            history.append(current)
+            front_history.append(obs["front"])
+
+            if scan_count % 10 == 0:
+                print(
+                    {
+                        "step": scan_count,
+                        "current": format_coord(current),
+                        "obstacle": obs["detected"],
+                        "front_mm": round(obs["front"], 1),
+                    }
+                )
+
+    except KeyboardInterrupt:
+        print("\nStopped by user. Saving final plot...")
+
+    finally:
+        save_final_plot("final_path.png")
+
+        try:
+            lidar.stop()
+        except Exception:
+            pass
+
+        try:
+            lidar.stop_motor()
+        except Exception:
+            pass
+
+        try:
+            lidar.disconnect()
+        except Exception:
+            pass
+
+        print("LiDAR disconnected.")
+
+
+if __name__ == "__main__":
+    main()

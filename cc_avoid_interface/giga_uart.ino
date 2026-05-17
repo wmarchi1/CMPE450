@@ -1,4 +1,9 @@
 #include <Arduino.h>
+#include <SPI.h>
+#include <nRF24L01.h>
+#include <RF24.h>
+#include <Wire.h>
+
 
 #pragma pack(push, 1)
 struct Coord {
@@ -100,6 +105,11 @@ private:
     Coord* buff;
 };
 
+// RF — transceiver for sending micro_path checkpoint
+RF24 radio(2, 3);
+const byte address[6] = "00001";
+
+
 // ---------------- TEST DATA ----------------
 Path path(10);
 Coord currPos = {5, 5, 0.1, 0};
@@ -114,6 +124,12 @@ void setup() {
     }
 
     delay(2000);
+
+    SPI1.begin();
+    radio.begin(&SPI1);
+    radio.openWritingPipe(address);
+    radio.setPALevel(RF24_PA_MIN);
+    radio.stopListening();
 
     Serial.println("ARDUINO READY");
 
@@ -155,6 +171,8 @@ void loop() {
 
             Coord received;
             Serial.readBytes((char*)&received, sizeof(Coord));
+            
+            radio.write(&received, sizeof(received));
 
             Serial.print("RX: ");
             Serial.print(received.x);

@@ -53,12 +53,15 @@ class ArduinoPathClient:
 
         if (sensor1.distance * 100) < 400:
             sensorFlags[0] = 1
+            print("Obstacle on left")
 
         if (sensor2.distance * 100) < 400:
             sensorFlags[1] = 1
+            print("Obstacle up ahead")
             
         if (sensor3.distance * 100) < 400:
             sensorFlags[2] = 1
+            print("Obstacle on right")
         
         return sensorFlags
     
@@ -73,12 +76,15 @@ class ArduinoPathClient:
         if (angle >= 0 and angle < 60):
             if (sensorFlags[2] == 1):
                 newPos = (x2 + 1), y2, nextVel, nextHead
+                print("Avoiding right obstacle...")
         elif (angle >= 60 and angle < 120):
             if (sensorFlags[1] == 1):
                 newPos = (x2 - 1), y2, nextVel, nextHead
+                print("Avoiding middle obstacle...")
         else:
             if (sensorFlags[0] == 1):
                 newPos = (x2 - 1), y2, nextVel, nextHead
+                print("Avoiding left obstacle...")
                 
         self.send_micro_path(newPos)
 
@@ -162,6 +168,7 @@ if __name__ == "__main__":
             sensorFlags = client.readUltrasonics()
             
             if 1 in sensorFlags:
+                print("Obstacle Detected")
                 currPos, nextPos = client.get_macro_path()
                 client.algorithm(self, currPos, nextPos, sensorFlags)
                 

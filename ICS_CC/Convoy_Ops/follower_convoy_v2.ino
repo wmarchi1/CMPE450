@@ -99,7 +99,12 @@ float desiredY = 0;
 float oldDesiredX = 0.0;
 float oldDesiredY = 0.0;
 
-float adjustedDesiredVelocity = 0.0;
+// float pathX[] = {2,0, 4.0, 6.0, 8.0};//, 15.0, 20.0};
+// float pathY[] = {2.0, 0.0, 2.0, 0.0};//, -10.0, -10.0};
+
+// const int numPoints = sizeof(pathX) / sizeof(pathX[0]);
+int pathCount = 1;
+const int numPoints = 2;
 
 float destinationTolerance = 0.7;   // meters
 float segmentStartPosition = 0.0;
@@ -107,7 +112,7 @@ float segmentStartPosition = 0.0;
 // ===================== Measured Values =====================
 float currentPosition = 0.0;   // meters
 float currentVelocity = 0.0;   // m/s
-float currentX  = -5.0;
+float currentX  = 0.0;
 float currentY  = 0.0;
 
 // // ===================== Position PID Gains =====================
@@ -119,6 +124,16 @@ float Kd_pos = 0.387212887171821;
 float Kp_vel = 19.6232429592983;
 float Ki_vel = 70.9400238823325;
 float Kd_vel = 0;
+
+// ===================== Position PID Gains =====================
+//float Kp_pos = 1.81493632280259;
+//float Ki_pos = 0.23534906486077;
+//float Kd_pos = 2.18688527899715;
+
+// ===================== Velocity PID Gains =====================
+//float Kp_vel = 0.707021748901557;
+//float Ki_vel = 0.431770610575882;
+//float Kd_vel = -0.437408677228963;
 
 // ===================== PID Memory =====================
 float posIntegral = 0.0;
@@ -140,7 +155,6 @@ const int servoPin = 9;
 // ===================== Heading PID =====================
 float desiredHeading = 0.0;     // degrees
 float currentHeading = 0.0;     // from IMU
-float desiredCheckPointHeading = 0.0;
 
 float Kp_heading = 0.5;
 float Ki_heading = 0;
@@ -201,7 +215,6 @@ void emergencyStop() {
     lastStopPrint = millis();
   }
 }
-
 //===================== Send Telemetry =====================
 void sendTelemetry() {
   TelemetryPacket pkt;
@@ -242,7 +255,7 @@ void sendTelemetry() {
 
 // get's a checkpoint from lead vehicle and adds it to micro path
 bool receive_path() {
-  // Serial.println("Entering receive_path function");
+  Serial.println("Entering receive_path function");
 
   if (!path_radio.available()) {
     Serial.println("no data in radio");
@@ -278,13 +291,10 @@ bool receive_path() {
     Serial.print("X: "); Serial.println(c.x);
     Serial.print("Y: "); Serial.println(c.y);
     // return macro_path.insert(c);
-  }
-
-  return true;
+    }
 }
 
 // ===================== Setup =====================
-bool hasTarget = false;
 void setup() {
   Serial.begin(115200);
   Wire.begin();
@@ -338,22 +348,22 @@ void setup() {
   filteredServo = 90.0;
   servoCommand = 90;
   steeringServo.write(90);
-  // desiredX = 0;
-  // desiredY = 0;
+  desiredX = 0;
+  desiredY = 0;
+  delay(1000);
   //segmentStartPosition = currentPosition;
 
-  macro_path.insert({0, 0, 0.1, 0}); //follower goes to origin
-  if (macro_path.size() > 0) {
-    Coord c;
-    macro_path.process(c);
-    desiredX = c.x;
-    desiredY = c.y;
-    desiredCheckPointHeading = c.heading;
-    hasTarget = true;
-    }
+  macro_path.insert({10, 0, 0.1, 0});
+  // macro_path.insert({4, 2, 0.1, 0});
+  // macro_path.insert({6, 0, 0.1, 0});
+  // macro_path.insert({8, 2, 0, 0});
+  Coord c;
+  macro_path.process(c);
+  desiredX = c.x;
+  desiredY = c.y;
+
   delay(1000);
 }
-
 void getDesiredPolar() {
   float dx = desiredX - currentX;
   float dy = desiredY - currentY;
@@ -361,72 +371,60 @@ void getDesiredPolar() {
   desiredPosition = sqrt((dx * dx) + (dy * dy));
   //float safeDesiredX = max(dx, 0.01);
   //float safeDesiredY = max(dy, 0.01);
-  float headingDirection =  atan2(dx, dy) * (180/PI);
+  desiredHeading =  atan2(dx, dy) * (180/PI);
+
   //float distanceToTarget = sqrt(dx * dx + dy * dy);
-  float checkpointHeading = desiredCheckPointHeading;
+
   // Since currentPosition is cumulative distance traveled,
   // desiredPosition should also be cumulative.
   //desiredPosition = segmentStartPosition + distanceToTarget;
 
   //desiredHeading = atan2(dx, dy) * 180.0 / PI;
-  if (headingDirection < 0) {
-    headingDirection += 360.0;
-  }
-  headingDirection = -(headingDirection - 90.0);
-  if (headingDirection < 0) {
-    headingDirection += 360.0;
-  }
-  headingDirection = headingDirection * PI/180; // convert back to radians
-  checkpointHeading = checkpointHeading * PI/180; // convert to radians
-  float weightDirection = max((desiredPosition-0.8)*10, 0);
-  float weightCheckpoint = 1/(desiredPosition + 0.1);
-  float xM = cos(headingDirection)*weightDirection + cos(checkpointHeading)*weightCheckpoint;
-  float yM = sin(headingDirection)*weightDirection + sin(checkpointHeading)*weightCheckpoint;
-  desiredHeading = atan2(yM, xM) * 180.0 / PI;
   if (desiredHeading < 0) {
     desiredHeading += 360.0;
   }
-
-}
-
-void changePath() {
-  if (desiredPosition <= destinationTolerance) {
-
-    if (macro_path.size() == 0) {
-      // No new targets → stop or hold
-      drivePWM(0);
-      desiredVelocity = 0;
-      return;
-    }
-
-    Coord C;
-    if (macro_path.process(C)) {   // <-- IMPORTANT if your API supports bool
-      oldDesiredX = desiredX;
-      oldDesiredY = desiredY;
-
-      desiredX = C.x;
-      desiredY = C.y;
-      desiredCheckPointHeading = C.heading;
-
-      // Reset controllers
-      posIntegral = 0.0;
-      prevPosError = 0.0;
-      velIntegral = 0.0;
-      prevVelError = 0.0;
-      headingIntegral = 0.0;
-      prevHeadingError = 0.0;
-
-      desiredPosition = 0.0;
-      currentPosition = 0.0;
-
-      Serial.print("New target X: ");
-      Serial.print(desiredX);
-      Serial.print(" | New target Y: ");
-      Serial.println(desiredY);
-    }
+  desiredHeading = -(desiredHeading - 90.0);
+  if (desiredHeading < 0) {
+    desiredHeading += 360.0;
   }
 }
+void changePath() {
 
+  if ((desiredPosition) <= destinationTolerance) {
+
+    // if (macro_path.size() == 0) {
+    //   drivePWM(0);
+    //   // desiredVelocity = 0;
+    //   Serial.println("Path complete.");
+    //   return;
+    // }
+
+    Coord C;
+    macro_path.process(C);
+    oldDesiredX = desiredX;
+    oldDesiredY = desiredY;
+    desiredX = C.x;
+    desiredY = C.y;
+    // desiredVelocity = C.speed;
+
+    //segmentStartPosition = currentPosition;
+
+    // Reset PID memories when changing target
+    posIntegral = 0.0;
+    prevPosError = 0.0;
+    velIntegral = 0.0;
+    prevVelError = 0.0;
+    headingIntegral = 0.0;
+    prevHeadingError = 0.0;
+    desiredPosition = 0.0;
+    currentPosition = 0.0;
+
+    Serial.print("New target X: ");
+    Serial.print(desiredX);
+    Serial.print(" | New target Y: ");
+    Serial.println(desiredY);
+  }
+}
 int xVal = 0;
 int yVal = 0;
 void unpackJoystickData(joy_stick_packet &jdata, int &joyX, int &joyY) {
@@ -435,62 +433,51 @@ void unpackJoystickData(joy_stick_packet &jdata, int &joyX, int &joyY) {
 }
 
 //deprecated
-// bool path_emergency() {
-//   if (path_radio.available()) {
-//     DataPacket jdata;
-//     path_radio.read(&jdata, sizeof(jdata));
-//     // unpackJoystickData(jdata, xVal, yVal);
-//     if (jdata.e_stop)
-//       lastRFTime = millis();
-//     // send_path();
-//     return true;
-//   }
-//   return false;
-// }
-
+bool path_emergency() {
+  if (path_radio.available()) {
+    DataPacket jdata;
+    path_radio.read(&jdata, sizeof(jdata));
+    // unpackJoystickData(jdata, xVal, yVal);
+    if (jdata.e_stop)
+      lastRFTime = millis();
+    // send_path();
+    return true;
+  }
+  return false;
+}
 // ===================== Main Loop =====================
 void loop() {
   unsigned long now = millis();
+  // path_emergency();
+  // Always read RF first.
+  // This clears the RX buffer and updates lastRFTime if transmitter is alive.
+  //readEmergencyRadio();
 
-  receive_path();
-  //Emergency stop if transmitter button is pressed
-  if (remoteEStop) {
-    emergencyStop();
-    lastControlTime = millis();   // prevents dt jump when restarting
-    return;
-  }
-
-  if (!hasTarget && macro_path.size() > 0) {
-    Coord c;
-    macro_path.process(c);
-    desiredX = c.x;
-    desiredY = c.y;
-    desiredCheckPointHeading = c.heading;
-    hasTarget = true;
-  }
-
-  if (!hasTarget) {
-    steeringServo.write(90);
-    return;
-  }
 
   // Normal autonomous control only runs if RF link is alive
-  if (hasTarget) {
-    if (now - lastControlTime >= controlPeriodMs) {
-      float dt = (now - lastControlTime) / 1000.0;
-      lastControlTime = now;
+  if (now - lastControlTime >= controlPeriodMs) {
+    float dt = (now - lastControlTime) / 1000.0;
+    lastControlTime = now;
 
-      currentHeading = getHeading();
+    currentHeading = getHeading();
 
-      getDesiredPolar();
-      changePath();
-      updateVelocity(dt);
-      updatePosition(dt);
-      autonomousControl(dt);
-      steeringPID(dt);
-      sendTelemetry();
-      //debugPrint();
+    receive_path();
+    //Emergency stop if transmitter button is pressed
+    if (remoteEStop) {
+      emergencyStop();
+      lastControlTime = millis();   // prevents dt jump when restarting
+      return;
     }
+    getDesiredPolar();
+    updateVelocity(dt);
+    updatePosition(dt);
+    autonomousControl(dt);
+    steeringPID(dt);
+    sendTelemetry();
+    if (macro_path.size() > 0)
+      changePath();
+
+    //debugPrint();
   }
 }
 
@@ -551,7 +538,7 @@ void updateVelocity(float dt) {
   float revolutions = avgPulses / pulsesPerRevolution;
   float distance = revolutions * wheelCircumference;
 
-  currentVelocity = (distance / dt) * (1.246);
+  currentVelocity = (distance / dt) * 1.246;
 }
 
 // ===================== Update Position =====================
@@ -564,25 +551,25 @@ void updatePosition(float dt) {
 
   currentX += distanceStep * cos(headingRad);
   currentY += distanceStep * sin(headingRad);
-  Serial.println("");
-  Serial.print("CurrentX: ");
-  Serial.print(currentX);
-  Serial.println("");
-  Serial.print("CurrentY: ");
-  Serial.print(currentY);
-  Serial.println("");
-  Serial.print("distanceStep: ");
-  Serial.print(distanceStep);
-  Serial.println("");
-  Serial.print("Position: ");
-  Serial.print(currentPosition);
-  Serial.println("");
-  Serial.print("Heading Rad: ");
-  Serial.print(headingRad);
-  Serial.println("");
-  Serial.print("Heading Deg: ");
-  Serial.print(currentHeading);
-  Serial.println("");
+  // Serial.println("");
+  // Serial.print("CurrentX: ");
+  // Serial.print(currentX);
+  // Serial.println("");
+  // Serial.print("CurrentY: ");
+  // Serial.print(currentY);
+  // Serial.println("");
+  // Serial.print("distanceStep: ");
+  // Serial.print(distanceStep);
+  // Serial.println("");
+  // Serial.print("Position: ");
+  // Serial.print(currentPosition);
+  // Serial.println("");
+  // Serial.print("Heading Rad: ");
+  // Serial.print(headingRad);
+  // Serial.println("");
+  // Serial.print("Heading Deg: ");
+  // Serial.print(currentHeading);
+  // Serial.println("");
 }
 
 float angleError(float target, float current) {
@@ -629,6 +616,7 @@ void steeringPID(float dt) {
 
 // ===================== Autonomous Cascade Control =====================
 void autonomousControl(float dt) {
+
   float temp_posError = desiredPosition;
 
   float posError = pwmAlpha * temp_posError + (1.0 - pwmAlpha) * temp_posError;

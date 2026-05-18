@@ -31,6 +31,15 @@ struct joy_stick_packet {
   bool e_stop;
 };
 
+#pragma pack(push, 1)
+struct Coord {
+    float x;
+    float y;
+    float speed;
+    float heading;
+};
+#pragma pack(pop)
+
 // RF emergency stop
 unsigned long lastRFTime = 0;
 const unsigned long rfTimeoutMs = 500;   // stop if no packet for 500 ms
@@ -258,6 +267,7 @@ void sendTelemetry() {
 
 // ===================== Setup =====================
 void setup() {
+  Serial.setTimeout(500);
   Serial.begin(115200);
   Wire.begin();
   if (!bno.begin()) {
@@ -642,4 +652,66 @@ void debugPrint() {
 
   Serial.print(" | Current Velocity: ");
   Serial.println(currentVelocity);
+}
+
+void transmit(Coord& currPos, Coord& targetPos) {
+        Serial.println("ACK_START");
+
+        
+        Serial.write((uint8_t*)&currPos, sizeof(Coord));
+        delay(10); // helps Pi not overflow buffer during test
+        Serial.write((uint8_t*)&targetPos, sizeof(Coord));
+
+
+        Serial.println("DONE_STREAM");        
+
+}
+
+void piCom() {
+   if (Serial.available()) {
+        String cmd = Serial.readStringUntil('\n');
+        cmd.trim();
+
+        // ---------- TEST 1: STREAM FULL PATH ----------
+        if (cmd == "Start") {
+            // Serial.println("ACK_START");
+            delay(100);
+
+            Coord currentPosition = {.x=currentX, .y=currentY, .speed=currentVelocity, .heading=currentHeading};
+            Coord targetPosition = {.x=desiredX, .y=desiredY, .speed=desiredVelocity, .heading=desiredHeading};
+
+            transmit(currentPosition, targetPosition);
+
+        }
+
+        // ---------- TEST 2: SINGLE PACKET HANDSHAKE ----------
+        else if (cmd == "Ready") {
+            Serial.println("ACK_READY");
+
+            delay(50);
+
+            Serial.println("Initiate");
+
+            Coord received;
+            Serial.readBytes((char*)&received, sizeof(Coord));
+            
+            radio.write(&received, sizeof(received));
+
+            Serial.print("RX: ");
+            Serial.print(received.x);
+            Serial.print(", ");
+            Serial.print(received.y);
+            Serial.print(", ");
+            Serial.print(received.speed);
+            Serial.print(", ");
+            Serial.println(received.heading);
+
+            Serial.println("Done");
+        }
+
+        // ---------- UNKNOWN ----------
+        else {
+            Serial.println("UNKNOWN_CMD");
+        }
+    }
 }

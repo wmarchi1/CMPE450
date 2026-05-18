@@ -707,6 +707,9 @@ void piCom() {
             Serial.println(received.heading);
 
             Serial.println("Done");
+
+            Serial.write((uint8_t*)&received, sizeof(Coord));
+            
         }
 
         // ---------- UNKNOWN ----------

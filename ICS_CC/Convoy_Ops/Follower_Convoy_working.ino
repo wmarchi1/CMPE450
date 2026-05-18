@@ -418,8 +418,8 @@ void changePath() {
     oldDesiredY = desiredY;
     desiredX = tempDesiredX;
     desiredY = tempDesiredY;
-    desiredVelocity = 0.1;
-    desiredHeading = 0;
+    desiredVelocity = tempDesiredVelocity;
+    desiredHeading = tempDesiredHeading;
 
     //segmentStartPosition = currentPosition;
 
@@ -486,10 +486,8 @@ void loop() {
     
     updateVelocity(dt);
     updatePosition(dt);
-    if (desiredPosition < = 2) {
-      autonomousControl(dt);
-      steeringPID(dt);
-    }
+    autonomousControl(dt);
+    steeringPID(dt);
     sendTelemetry();
     changePath();
     //debugPrint();

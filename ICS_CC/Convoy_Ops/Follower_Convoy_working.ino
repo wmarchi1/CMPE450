@@ -95,11 +95,12 @@ float desiredPosition = 0.0;   // meters
 float desiredVelocity = 0.5;   // m/s
 float desiredX = 0;
 float desiredY = 0;
+float checkpointHeading = 0.0;
 float oldDesiredX = 0.0;
 float oldDesiredY = 0.0;
 float tempDesiredX = 0.0;
 float tempDesiredY = 0.0;
-float tempDesiredHeading = 0.0;
+float tempCheckpointHeading = 0.0;
 float tempDesiredVelocity = 0.0;
 
 // float pathX[] = {2,0, 4.0, 6.0, 8.0};//, 15.0, 20.0};
@@ -213,10 +214,10 @@ void emergencyStop() {
   servoCommand = 90;
   steeringServo.write(90);
 
-  static unsigned long lastStopPrint = 0;
-  if (millis() - lastStopPrint > 500) {;
-    lastStopPrint = millis();
-  }
+  // static unsigned long lastStopPrint = 0;
+  // if (millis() - lastStopPrint > 500) {;
+  //   lastStopPrint = millis();
+  // }
 }
 //===================== Send Telemetry =====================
 void sendTelemetry() {
@@ -280,7 +281,7 @@ bool receive_path() {
     tempDesiredX = path_checkpnt.x;
     tempDesiredY = path_checkpnt.y;
     tempDesiredVelocity = path_checkpnt.speed;
-    tempDesiredHeading = path_checkpnt.heading;
+    tempCheckpointHeading = path_checkpnt.heading;
 
     // Coord c2;
     // if (macro_path.size() > 0) {
@@ -376,7 +377,7 @@ void getDesiredPolar() {
   //float safeDesiredY = max(dy, 0.01);
   float headingDirection =  atan2(dx, dy) * (180/PI);
   //float distanceToTarget = sqrt(dx * dx + dy * dy);
-  float checkpointHeading = 0;
+  //float checkpointHeading = 0;
   // Since currentPosition is cumulative distance traveled,
   // desiredPosition should also be cumulative.
   //desiredPosition = segmentStartPosition + distanceToTarget;
@@ -419,7 +420,7 @@ void changePath() {
     desiredX = tempDesiredX;
     desiredY = tempDesiredY;
     desiredVelocity = tempDesiredVelocity;
-    desiredHeading = tempDesiredHeading;
+    checkpointHeading = tempCheckpointHeading;
 
     //segmentStartPosition = currentPosition;
 
@@ -486,8 +487,16 @@ void loop() {
     
     updateVelocity(dt);
     updatePosition(dt);
-    autonomousControl(dt);
-    steeringPID(dt);
+    float leadX = tempDesiredX - currentX;
+    float leadY = tempDesiredY - currentY;
+    float leaderPosition = sqrt((leadX*leadX) + (leadY * leadY));
+    if(leaderPosition <= 2) {
+      emergencyStop();
+    }
+    else{
+      autonomousControl(dt);
+      steeringPID(dt);
+    }
     sendTelemetry();
     changePath();
     //debugPrint();
